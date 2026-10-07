@@ -118,6 +118,7 @@ git -C "$H" checkout -q --orphan tmp; git -C "$H" add -A; git -C "$H" commit -q 
 out="$(cd "$H" && "$D" 2>&1)"; has "$out" 'HISTORY_DESTROYED' && ok "destroy_history reports clean" || bad "destroy_history ($out)"
 check "only refs/heads/reset remains" test "$(git -C "$H" for-each-ref --format='%(refname)')" = "refs/heads/reset"
 check "linked worktree folder is gone" test ! -e "$T/histwt"
+check "removal of the worktree is announced" bash -c "echo '$out' | grep -q 'removed worktree'"
 check "branch sections removed from .git/config" test -z "$(git -C "$H" config --name-only --get-regexp '^branch\.' 2>/dev/null)"
 check "remote URL kept" test "$(git -C "$H" remote get-url origin)" = "$T/remote.git"
 check "old history text not found anywhere under .git" test -z "$(grep -rIl --binary-files=text 'OLDMARKER' "$H/.git" 2>/dev/null)"
@@ -130,6 +131,7 @@ git -C "$W" branch side; git -C "$W" worktree add -q "$T/wtsec-wt" side; echo KE
 git -C "$W" checkout -q --orphan tmp; git -C "$W" add -A; git -C "$W" commit -q -m "Initial commit"; git -C "$W" branch -M reset
 out4="$(cd "$W" && "$D" 2>&1)"; rc4=$?
 [ "$rc4" -eq 2 ] && has "$out4" 'REFUSED: linked worktree' && ok "destroy_history refuses a worktree holding ignored files" || bad "worktree secret refusal ($rc4 $out4)"
+check "refusal names the worktree it blocked on" bash -c "echo '$out4' | grep -q wtsec-wt"
 check "worktree and its ignored file untouched after refusal" test -f "$T/wtsec-wt/.env"
 mv "$T/wtsec-wt/.env" "$W/.env"
 out5="$(cd "$W" && "$D" 2>&1)"; has "$out5" 'HISTORY_DESTROYED' && ok "destroy_history proceeds once the secret is in the root" || bad "after move ($out5)"
@@ -145,6 +147,7 @@ check "token format is documented" grep -q 'exactly 16 lowercase hex' "$ROOT/SKI
 check "gate runs a new dry run when the report is gone" grep -q 'run a new dry run and stop' "$ROOT/SKILL.md"
 check "no ripgrep-only flag in the search guide" test -z "$(grep -r -e '--max-filesize' "$ROOT/SKILL.md" "$ROOT/references" || true)"
 check "line| token section documented" grep -q 'line|<absolute path>|<exact line text>' "$ROOT/SKILL.md"
+check "keep| token section documented" grep -q "keep|<absolute path>" "$ROOT/SKILL.md"
 check "SKILL.md has name" grep -q '^name: context-bleach' "$ROOT/SKILL.md"
 check "skill stays visible (no disable flag)" test -z "$(grep -m1 '^disable-model-invocation' "$ROOT/SKILL.md")"
 check "agent may not supply its own token" grep -q 'Never supply, guess, or reuse a token' "$ROOT/SKILL.md"

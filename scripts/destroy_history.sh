@@ -38,6 +38,7 @@ done < <(git worktree list --porcelain | sed -n 's/^worktree //p')
 git worktree list --porcelain | sed -n 's/^worktree //p' | while IFS= read -r w; do
   [ "$(cd "$w" 2>/dev/null && pwd -P || echo "$w")" = "$(pwd -P)" ] && continue
   git worktree remove --force --force "$w" 2>/dev/null || rm -rf "$w"
+  echo "removed worktree: $w"
 done
 git worktree prune
 rm -rf "$git_dir/worktrees"
