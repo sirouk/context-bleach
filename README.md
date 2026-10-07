@@ -89,7 +89,7 @@ exclude: redis on localhost:6379
 context-bleach execute 3f9a1c2b7d4e8a10
 ```
 
-The agent recomputes the token. If the repo, refs, working tree, or scope changed, it stops and prints a new report. If it matches, it runs the full procedure with no further questions: stop processes, make or reuse branch `reset`, checkpoint, baseline, purge and rename, prove the baseline, rewrite local history to one orphan commit, report in chat, stop. It asks only about an unclear secret or wallet.
+The agent recomputes the token. It covers every file's contents, every linked worktree, the plan (what gets deleted, renamed, truncated), and the installed skill version. If any of it changed, the agent stops and prints a new report. The skill does not update itself between the report and the run. If it matches, it runs the full procedure with no further questions: stop processes, make or reuse branch `reset`, checkpoint, baseline, purge and rename, prove the baseline, rewrite local history to one orphan commit, report in chat, stop. It asks only about an unclear secret or wallet.
 
 The root is the git top level of the current directory. It stops if that is not a git repo, a home directory, a filesystem root, or a folder with other projects' repos.
 
@@ -121,7 +121,8 @@ Set `CONTEXT_BLEACH_NO_UPDATE=1` to turn the check off. Re-running the install c
 SKILL.md                      the procedure (single source of truth)
 references/harness-locations.md   where agents keep per-project traces
 scripts/update_check.sh       version check and self-update
-scripts/fingerprint.sh        token for the dry-run to execute gate
+scripts/fingerprint.sh        token for the dry-run to execute gate (covers file contents, worktrees, plan)
+scripts/destroy_history.sh    step 6: one commit, no worktrees, no leftover objects
 agents/openai.yaml            Codex metadata (implicit invocation off)
 install.sh                    curl | bash installer
 tests/test_install.sh         sandbox tests for install and update
