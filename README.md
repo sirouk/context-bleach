@@ -22,7 +22,7 @@ The skill is plain `SKILL.md` + `scripts/` + `references/`. Any agent that reads
 | Hermes | `~/.hermes/skills/software-development/context-bleach` (if present) |
 | Gemini CLI, OpenCode, Cursor | best effort, **opt-in only**: `CONTEXT_BLEACH_TARGETS=gemini,opencode,cursor` |
 
-In Claude Code the skill is manual-only (`disable-model-invocation: true`): call it as `/context-bleach`.
+The skill stays visible to the agent, so plain `context-bleach` works. The safety rails are the dry run, the token that only you can send, and the description that says to use it only when named. A stray trigger can only produce a read-only report.
 
 Options (environment variables):
 
@@ -39,7 +39,14 @@ curl -fsSL .../install.sh | bash -s -- --uninstall
 
 For an agent without a skills folder, paste `SKILL.md` into its prompt. It needs a shell, file access, and git.
 
-Restart or refresh the agent after install. Then say `context-bleach` for a dry run (Codex: `$context-bleach`).
+Restart or refresh the agent after install. Then say `context-bleach` for a dry run.
+
+| Agent | Invoke |
+| --- | --- |
+| Claude Code | `/context-bleach` or plain `context-bleach` |
+| Codex | `$context-bleach` (explicit mention; implicit use is off in `agents/openai.yaml`) |
+| Prime Agent | `/skill:context-bleach` or plain `context-bleach` |
+| Others | name the skill, or paste `SKILL.md` into the prompt |
 
 ## Use
 

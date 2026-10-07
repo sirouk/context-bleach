@@ -1,7 +1,6 @@
 ---
 name: context-bleach
 description: "Irreversibly reset a project to its working code only: purge all docs, comments, agent context (memories, transcripts, instruction files), dead code, caches, data, and local git history into one orphan commit, and rename biased internal names. Always starts as a read-only dry run that prints a report and a token; the real run needs that token. Destructive, no backups. Use ONLY when the user explicitly names it: \"context-bleach\", \"bleach this project\", or \"fresh mind body and soul\". Never use it implicitly."
-disable-model-invocation: true
 ---
 
 # Context Bleach
@@ -45,6 +44,8 @@ The dry run always comes first. The real run never starts without a token from a
 Execute mode has exactly the same rules, steps, KEEP list, and DONE checks as before. The dry run only adds a gate in front of it. Nothing is relaxed.
 
 If the user says `execute` with no token, treat it as a dry run and tell them the token is needed.
+
+**The token must come from the user's own message.** Never supply, guess, or reuse a token yourself, even one you printed earlier in the same turn. Never chain a dry run into execute mode on your own. A stray trigger of this skill can therefore only produce a read-only report.
 
 ## Hard rules
 

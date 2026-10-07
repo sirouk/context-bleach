@@ -88,7 +88,15 @@ check "fingerprint --lines prints canonical lines" bash -c "printf 'harness|/x\n
 check "dry run left no git changes" test -z "$(git -C "$T/fp" status --porcelain)"
 
 check "SKILL.md has name" grep -q '^name: context-bleach' "$ROOT/SKILL.md"
-check "claude manual-only flag" grep -q '^disable-model-invocation: true' "$ROOT/SKILL.md"
+check "skill stays visible (no disable flag)" test -z "$(grep -m1 '^disable-model-invocation' "$ROOT/SKILL.md")"
+check "agent may not supply its own token" grep -q 'Never supply, guess, or reuse a token' "$ROOT/SKILL.md"
+check "frontmatter valid" python3 - "$ROOT/SKILL.md" <<'PY'
+import re, sys, yaml, os
+t = open(sys.argv[1]).read()
+fm = yaml.safe_load(t.split('---')[1])
+assert fm['name'] == 'context-bleach' and re.fullmatch(r'[a-z0-9]+(-[a-z0-9]+)*', fm['name']) and len(fm['name']) <= 64
+assert 0 < len(fm['description']) <= 1024, len(fm['description'])
+PY
 check "SKILL.md documents dry run and token" grep -q 'context-bleach execute <token>' "$ROOT/SKILL.md"
 check "implicit invocation off" grep -q 'allow_implicit_invocation: false' "$ROOT/agents/openai.yaml"
 
