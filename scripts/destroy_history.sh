@@ -7,7 +7,8 @@
 # It deletes linked worktrees (folder and all), every ref except refs/heads/reset, stashes,
 # branch sections in .git/config, ORIG_HEAD/FETCH_HEAD, reflogs, and unreachable objects.
 set -euo pipefail
-trap 'rc=$?; [ "$rc" = 0 ] || echo "HISTORY_NOT_CLEAN (script stopped at line $LINENO, exit $rc)" >&2' EXIT
+# shellcheck disable=SC2154
+trap 'rc=$?; [ "$rc" = 0 ] || echo "HISTORY_NOT_CLEAN (script stopped, exit $rc)" >&2' EXIT
 
 top="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "REFUSED: not in a git repository" >&2; exit 2; }
 cd "$top"
@@ -27,7 +28,7 @@ git worktree prune
 rm -rf "$git_dir/worktrees"
 
 # 2. every ref except reset (branches, tags, notes, remote-tracking, stash, anything else)
-git for-each-ref --format='%(refname)' | grep -vx 'refs/heads/reset' | while IFS= read -r ref; do
+{ git for-each-ref --format='%(refname)' | grep -vx 'refs/heads/reset' || true; } | while IFS= read -r ref; do
   git update-ref -d "$ref"
 done
 git stash clear 2>/dev/null || true
