@@ -10,13 +10,13 @@ Two kinds of trace exist:
 ## How to find them
 
 1. Get the absolute project root, and its path with `/` replaced by `-`, `_`, or `%2F`. Also get the repo name and the git remote URL.
-2. For each home directory below, grep for those strings. Search file names and file contents.
+2. For each harness home in the tables below that exists on this machine, search that one directory. Never search from a parent of all of them.
 
 ```bash
-# names that embed the path
-find ~ -maxdepth 6 \( -name "*<slug>*" -o -name "*<repo-name>*" \) -not -path "<project-root>/*" 2>/dev/null
-# contents that mention the path
-grep -rIl --exclude-dir=node_modules --exclude-dir=.git "<project-root>" <harness-home> 2>/dev/null
+# names that embed the path or repo name (fast)
+timeout 60 find <harness-home> -maxdepth 5 \( -iname "*<slug>*" -o -iname "*<repo-name>*" \) 2>/dev/null
+# contents that mention the root (skip big files)
+timeout 120 grep -rIl --max-filesize=5M --exclude-dir=node_modules --exclude-dir=.git "<project-root>" <harness-home> 2>/dev/null
 ```
 
 **Never search from `~`, `/root`, `/home`, `/`, or `/tmp` as a whole, with `grep`, `find`, `rg`, or `locate`.** It can hold gigabytes of transcripts, caches, and Docker data, and the search can run for many minutes. Search only the harness homes in the tables below, one at a time.
