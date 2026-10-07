@@ -20,12 +20,14 @@ export CONTEXT_BLEACH_SOURCE="$T/remote.git"
 
 # 1. install from checkout into auto-detected agents
 out="$(bash "$T/work/install.sh" 2>&1)"
-for d in .claude .codex .agents; do check "installed into $d" test -f "$HOME/$d/skills/context-bleach/SKILL.md"; done
+for d in .claude .agents; do check "installed into $d" test -f "$HOME/$d/skills/context-bleach/SKILL.md"; done
+check "codex alias is not a separate copy" test ! -e "$HOME/.codex/skills/context-bleach"
 check "no gemini dir created" test ! -e "$HOME/.gemini"
 S="$HOME/.claude/skills/context-bleach"
 check "updater is executable" test -x "$S/scripts/update_check.sh"
+check "fingerprint is executable" test -x "$S/scripts/fingerprint.sh"
 check "metadata has 40-hex commit" grep -Eq '"commit": "[0-9a-f]{40}"' "$S/.context-bleach-install.json"
-check "metadata hashes every file" test "$(grep -c '": "[0-9a-f]\{64\}"' "$S/.context-bleach-install.json")" -eq 5
+check "metadata hashes every file" test "$(grep -c '": "[0-9a-f]\{64\}"' "$S/.context-bleach-install.json")" -eq 6
 
 # 2. up to date
 out="$(bash "$S/scripts/update_check.sh" --apply)"; has "$out" '^UP_TO_DATE' && ok "UP_TO_DATE" || bad "UP_TO_DATE ($out)"
@@ -68,7 +70,26 @@ CONTEXT_BLEACH_TARGETS=gemini bash "$T/work/install.sh" >/dev/null 2>&1; check "
 CONTEXT_BLEACH_TARGETS=bogus bash "$T/work/install.sh" >/dev/null 2>&1; [ $? -ne 0 ] && ok "bogus target rejected" || bad "bogus target"
 
 # 8. skill content sanity
+CONTEXT_BLEACH_TARGETS=codex CODEX_SKILLS_HOME="$T/cx" bash "$T/work/install.sh" >/dev/null 2>&1; check "codex target honors CODEX_SKILLS_HOME" test -f "$T/cx/context-bleach/SKILL.md"
+
+# 9. fingerprint: deterministic, order-free, sensitive to scope and repo state
+F="$ROOT/scripts/fingerprint.sh"
+git init -q "$T/fp"; git -C "$T/fp" -c user.name=t -c user.email=t@t commit -q --allow-empty -m a
+t1="$(printf 'datastore|h/a\nharness|/x\n' | "$F" "$T/fp")"
+t2="$(printf 'harness|/x\n\n datastore|h/a \n' | "$F" "$T/fp")"
+[ -n "$t1" ] && [ "$t1" = "$t2" ] && ok "token stable across order and whitespace" || bad "token stable ($t1 $t2)"
+[ "${#t1}" -eq 16 ] && ok "token is 16 hex" || bad "token length"
+t3="$(printf 'datastore|h/b\nharness|/x\n' | "$F" "$T/fp")"; [ "$t1" != "$t3" ] && ok "token changes with scope" || bad "scope change"
+echo z > "$T/fp/new.txt"; t4="$(printf 'datastore|h/a\nharness|/x\n' | "$F" "$T/fp")"; [ "$t1" != "$t4" ] && ok "token changes with working tree" || bad "tree change"
+rm "$T/fp/new.txt"; git -C "$T/fp" tag v1; t5="$(printf 'datastore|h/a\nharness|/x\n' | "$F" "$T/fp")"; [ "$t1" != "$t5" ] && ok "token changes with a new ref" || bad "ref change"
+git -C "$T/fp" tag -d v1 >/dev/null; t6="$(printf 'datastore|h/a\nharness|/x\n' | "$F" "$T/fp")"; [ "$t1" = "$t6" ] && ok "token returns when state returns" || bad "token restore"
+mkdir -p "$T/notgit"; printf '' | "$F" "$T/notgit" >/dev/null 2>&1; [ $? -eq 2 ] && ok "fingerprint refuses non-git dir" || bad "non-git"
+check "fingerprint --lines prints canonical lines" bash -c "printf 'harness|/x\n' | '$F' '$T/fp' --lines | grep -q '^harness|/x'"
+check "dry run left no git changes" test -z "$(git -C "$T/fp" status --porcelain)"
+
 check "SKILL.md has name" grep -q '^name: context-bleach' "$ROOT/SKILL.md"
+check "claude manual-only flag" grep -q '^disable-model-invocation: true' "$ROOT/SKILL.md"
+check "SKILL.md documents dry run and token" grep -q 'context-bleach execute <token>' "$ROOT/SKILL.md"
 check "implicit invocation off" grep -q 'allow_implicit_invocation: false' "$ROOT/agents/openai.yaml"
 
 echo; echo "passed=$pass failed=$failn"; [ "$failn" -eq 0 ]

@@ -1,7 +1,7 @@
 interface:
   display_name: "Context Bleach"
-  short_description: "Irreversible project reset: purge docs, comments, agent context, and git history"
-  default_prompt: "Use $context-bleach on this project. Start with read-only discovery and print the scope manifest. Honor any include: and exclude: lines."
+  short_description: "Irreversible project reset. Dry run first, then execute with a token."
+  default_prompt: "Use $context-bleach to do a dry run on this project: print the scope manifest, the full report, and a token. Change nothing."
 
 policy:
   allow_implicit_invocation: false

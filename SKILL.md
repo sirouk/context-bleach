@@ -1,6 +1,7 @@
 ---
 name: context-bleach
-description: "Irreversibly reset a project to its working code only: purge all docs, comments, agent context (memories, transcripts, instruction files), dead code, caches, data, and local git history into one orphan commit, and rename biased internal names. Destructive, no backups. Use ONLY when the user explicitly names it: \"context-bleach\", \"bleach this project\", or \"fresh mind body and soul\". Never use it implicitly."
+description: "Irreversibly reset a project to its working code only: purge all docs, comments, agent context (memories, transcripts, instruction files), dead code, caches, data, and local git history into one orphan commit, and rename biased internal names. Always starts as a read-only dry run that prints a report and a token; the real run needs that token. Destructive, no backups. Use ONLY when the user explicitly names it: \"context-bleach\", \"bleach this project\", or \"fresh mind body and soul\". Never use it implicitly."
+disable-model-invocation: true
 ---
 
 # Context Bleach
@@ -32,6 +33,19 @@ Say nothing about freshness unless the result is `UPDATED` or `LOCAL_DIRTY`.
 
 Read this whole file and [references/harness-locations.md](references/harness-locations.md) before you change anything. Step 4 or the cleanup may delete project-level agent folders. If this skill was installed inside the project, it may disappear mid-run. Do not depend on re-reading it.
 
+## Modes
+
+The dry run always comes first. The real run never starts without a token from a dry run of the same state.
+
+| The user says | Mode | What happens |
+| --- | --- | --- |
+| `context-bleach` | **dry run** (default) | Read-only. Prints the full report and a token, then stops. |
+| `context-bleach execute <token>` | **execute** | Recomputes the token. If it matches, runs the full procedure. If not, stops and changes nothing. |
+
+Execute mode has exactly the same rules, steps, KEEP list, and DONE checks as before. The dry run only adds a gate in front of it. Nothing is relaxed.
+
+If the user says `execute` with no token, treat it as a dry run and tell them the token is needed.
+
 ## Hard rules
 
 - Nothing recoverable survives the run: no backups, no archives, no "moved to /old", no trash. Delete means gone.
@@ -41,6 +55,7 @@ Read this whole file and [references/harness-locations.md](references/harness-lo
 - Do not write notes, plans, reports, or memories to disk at any point. Report in chat only.
 - Never run `git clean -x` or any ignore-based cleanup. Many secrets are gitignored and untracked.
 - Do not touch anything outside SCOPE.
+- **A dry run changes nothing.** No branch, no file, no stopped process, no baseline run, no dependency install, no network write.
 
 ## Invocation
 
@@ -54,7 +69,10 @@ The user's message may carry `include:` and `exclude:` lines after the skill nam
 
 Do read-only discovery first. Change nothing.
 
-Then print **one scope manifest** and **continue without waiting**. Do not put questions in the manifest.
+Then print **one scope manifest**. Do not put questions in the manifest.
+
+- In **dry-run** mode, go on to [Dry run report](#dry-run-report) and stop.
+- In **execute** mode, pass the [Execute gate](#execute-gate), then continue without waiting.
 
 ### Ownership rules
 
@@ -87,7 +105,50 @@ The manifest and the final report use the same layout: short labelled sections, 
 - There is no "problems to decide" section. Everything uncertain goes in a single **left alone** list.
 - The final report is the manifest sections followed by the DONE checks. Each check is one plain sentence followed by the command output that proves it.
 
-Then set SCOPE from the manifest and proceed. Do not ask, except for the secret-or-wallet case in [Doubt](#doubt).
+## Dry run report
+
+After the manifest, print these sections. Everything is a plan, not an action. Never print secret contents; print secret paths only.
+
+1. **Baseline**: the entrypoints and the command that would prove the project works, and what it would and would not exercise. Say whether it would load prompts, job names, serialized type names, Dockerfiles, CI, or cron definitions. Do **not** run it. If you cannot find a baseline, say **BLOCKED: no baseline**. Execute mode will not start without one.
+2. **KEEP**: the secret, key, wallet, certificate, and env file paths that would be kept. Mark any that are tracked by git (they would be untracked in step 2).
+3. **Would delete**: docs files, agent-context paths, logs and caches and artifacts, dead-code candidates (with how you decided they are unreachable), and sample or fixture files nothing reads. Give counts and the full paths. Count the files that carry comments to strip.
+4. **Would rename**: each biased or overfit internal name, old to new, with the role the new name states. Name the external contract names you will not rename.
+5. **Would stop**: the processes, workers, cron jobs, and schedulers from step 1.
+6. **Git**: current branch and HEAD, whether the tree is dirty, whether `reset` already exists, and counts of the local branches, tags, stashes, worktrees, notes, and remote-tracking refs that would be destroyed. Show the `git ls-remote` output, or "no remote".
+7. **Data**: the in-scope tables that would be truncated and the tables kept, and the cache, queue, and vector-store keys that would be flushed.
+8. **Left alone**: one list of everything uncertain, not linked, or skipped, each with a reason.
+9. **Token and command**: the token, and the exact line the user sends to proceed.
+
+Compute the token like this (see [Token](#token)):
+
+```bash
+printf '%s\n' "datastore|host/name" "harness|/abs/path" ... | <skill-directory>/scripts/fingerprint.sh <root>
+```
+
+End the report with:
+
+> Read this report. To run it for real, send: `context-bleach execute <token>` (repeat any include:/exclude: lines). Nothing has been changed.
+
+Then stop. Do not start step 1.
+
+### Token
+
+The token identifies the root, HEAD, branch, working-tree status, all refs, stashes, remotes, and the in-scope items. If any of them changes, the token changes.
+
+Feed `fingerprint.sh` one line per **in-scope** item, as `<section>|<stable id>`. Sections: `datastore`, `container`, `process`, `harness`, `include`, `exclude`. Use stable ids: absolute paths, `host/name`, container names, a process's script or working-directory path. Use harness store directories, not individual transcript files. Never use PIDs or timestamps. Use the same ids in the dry run and in execute mode.
+
+## Execute gate
+
+In execute mode, before step 1:
+
+1. Run the [Freshness](#freshness) step, discovery, and the manifest again, with the same `include:` and `exclude:` lines.
+2. Recompute the token with `scripts/fingerprint.sh`. Do this now: the skill folder may be inside the project and be deleted later.
+3. Compare it with the user's token.
+   - **Match**: print the manifest and continue to ORDER. Do not ask.
+   - **Mismatch, or the script is missing**: stop. Change nothing. Say what differs (use `fingerprint.sh <root> --lines`), print a fresh dry-run report with the new token, and wait for a new `execute`.
+4. If the dry run said **BLOCKED: no baseline**, stop.
+
+In execute mode, set SCOPE from the manifest and proceed. Do not ask, except for the secret-or-wallet case in [Doubt](#doubt).
 
 ## SCOPE
 
@@ -102,6 +163,8 @@ Anything outside this is not yours to touch.
 When a step's precondition does not exist, record that as the step's result and continue. No commits means `reset` starts unborn. No remote means the recorded state is "no remote", and the final check is that there is still none.
 
 ## ORDER
+
+Execute mode only.
 
 1. **Stop** every application process, worker, cron job, and scheduler that the ownership rules assign to this project. Leave its datastores running. Leave harnesses, editors, and this agent's process tree running. Keep the list; you must report it.
 2. **Record and checkpoint.**
@@ -174,7 +237,7 @@ Ask only if doubt about a secret or wallet remains after that.
 
 ## DONE
 
-DONE means all of these, **shown with command output, not asserted**. The final report is the manifest sections followed by these checks, each as one plain sentence followed by the command output that proves it:
+A dry run is done when the report and token are printed. For execute mode, DONE means all of these, **shown with command output, not asserted**. The final report is the manifest sections followed by these checks, each as one plain sentence followed by the command output that proves it:
 
 - The current branch is `reset`. The step 5 baseline run passed with no new failures. It was not re-run after cleanup.
 - A list of every process, worker, cron job, and scheduler stopped in step 1.

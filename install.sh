@@ -4,11 +4,14 @@
 #   curl -fsSL https://raw.githubusercontent.com/sirouk/context-bleach/main/install.sh | bash
 #
 # The skill is plain SKILL.md + scripts + references. It installs into the skills
-# directory of every agent found on the machine, plus the shared ~/.agents/skills.
+# directory of each verified agent found on the machine, plus the shared
+# ~/.agents/skills (read by Codex and other agents). Gemini, OpenCode and Cursor
+# paths are best effort and install only when you name them in CONTEXT_BLEACH_TARGETS.
 #
 # Env overrides:
 #   CONTEXT_BLEACH_TARGETS  comma list: auto (default), all, or any of
-#                           claude,codex,agents,prime,gemini,opencode,cursor,hermes
+#                           claude,codex,agents,prime,hermes   (verified)
+#                           gemini,opencode,cursor              (best effort, opt-in only)
 #   CONTEXT_BLEACH_DEST     explicit install directory (the skill folder itself);
 #                           overrides TARGETS. Project scope example:
 #                           CONTEXT_BLEACH_DEST=$PWD/.claude/skills/context-bleach
@@ -17,7 +20,7 @@
 #   CONTEXT_BLEACH_REF      ref recorded for update checks (default: main)
 #   CONTEXT_BLEACH_COMMIT   exact 40-hex commit to install (pinned or manual installs)
 #   CONTEXT_BLEACH_RAW      raw base URL (default: derived from source and commit)
-#   CODEX_HOME, CLAUDE_HOME, HERMES_HOME, GEMINI_HOME   override agent homes
+#   CODEX_SKILLS_HOME (default ~/.agents/skills), CLAUDE_HOME, HERMES_HOME, GEMINI_HOME
 #
 # Re-running the same command updates the skill.
 # Uninstall: curl -fsSL .../install.sh | bash -s -- --uninstall
@@ -33,6 +36,7 @@ FILES=(
   agents/openai.yaml
   references/harness-locations.md
   scripts/update_check.sh
+  scripts/fingerprint.sh
   LICENSE
 )
 
@@ -84,7 +88,7 @@ remote_commit() {
 target_path() {
   case "$1" in
     claude)   echo "${CLAUDE_HOME:-$HOME/.claude}/skills/$NAME" ;;
-    codex)    echo "${CODEX_HOME:-$HOME/.codex}/skills/$NAME" ;;
+    codex)    echo "${CODEX_SKILLS_HOME:-$HOME/.agents/skills}/$NAME" ;;
     agents)   echo "$HOME/.agents/skills/$NAME" ;;
     prime)    echo "$HOME/.prime/agent/skills/$NAME" ;;
     gemini)   echo "${GEMINI_HOME:-$HOME/.gemini}/skills/$NAME" ;;
@@ -98,7 +102,7 @@ target_path() {
 agent_home() {
   case "$1" in
     claude)   echo "${CLAUDE_HOME:-$HOME/.claude}" ;;
-    codex)    echo "${CODEX_HOME:-$HOME/.codex}" ;;
+    codex)    echo "${CODEX_SKILLS_HOME:-$HOME/.agents/skills}" ;;
     agents)   echo "$HOME/.agents" ;;
     prime)    echo "$HOME/.prime/agent" ;;
     gemini)   echo "${GEMINI_HOME:-$HOME/.gemini}" ;;
@@ -108,7 +112,8 @@ agent_home() {
   esac
 }
 
-ALL_TARGETS="claude codex agents prime gemini opencode cursor hermes"
+ALL_TARGETS="claude agents prime hermes gemini opencode cursor"
+AUTO_TARGETS="claude agents prime hermes"
 
 expand_targets() {
   local raw out="" t
@@ -117,7 +122,7 @@ expand_targets() {
     case "$t" in
       all) out="$out $ALL_TARGETS" ;;
       auto)
-        for a in $ALL_TARGETS; do
+        for a in $AUTO_TARGETS; do
           if [ "$a" = agents ] || [ -d "$(agent_home "$a")" ]; then out="$out $a"; fi
         done ;;
       claude|codex|agents|prime|gemini|opencode|cursor|hermes) out="$out $t" ;;
@@ -188,7 +193,7 @@ populate() {
     if [ -n "$SRC" ]; then cp "$SRC/$f" "$dest/$f" || return 1
     else curl -fsSL "$RAW/$f" -o "$dest/$f" || return 1; fi
   done
-  chmod +x "$dest/scripts/update_check.sh"
+  chmod +x "$dest/scripts/update_check.sh" "$dest/scripts/fingerprint.sh"
   write_meta "$dest"
 }
 
@@ -243,6 +248,6 @@ while IFS= read -r d; do
   install_one "$d" || rc=1
 done < <(list_dests)
 
-echo "Restart or refresh your agent, then say \"context-bleach\" to use it."
-echo "WARNING: this skill deletes data irreversibly. It only runs when you name it."
+echo "Restart or refresh your agent, then say \"context-bleach\" for a dry run (changes nothing)."
+echo "WARNING: \"context-bleach execute <token>\" deletes data irreversibly. It needs a token from a dry run."
 exit "$rc"

@@ -4,7 +4,7 @@ An agent-agnostic skill that resets a project to only the code it needs to work.
 
 It purges docs, comments, agent memory and transcripts, caches, data, and local git history (one orphan commit). It also renames biased internal names.
 
-> **This is destructive and irreversible.** No backups. No trash. The skill runs only when you name it (`context-bleach`). It prints a scope manifest first and then continues without asking. It never pushes and never touches the remote.
+> **The real run is destructive and irreversible.** No backups. No trash. The skill runs only when you name it. It **always starts as a read-only dry run** that prints a report and a token. The real run needs that token and refuses to start if anything changed since. It never pushes and never touches the remote.
 
 ## Install
 
@@ -16,14 +16,13 @@ The skill is plain `SKILL.md` + `scripts/` + `references/`. Any agent that reads
 
 | Agent | Path |
 | --- | --- |
-| Claude Code | `~/.claude/skills/context-bleach` |
-| Codex CLI | `~/.codex/skills/context-bleach` |
-| Shared / generic | `~/.agents/skills/context-bleach` (always) |
-| Prime Agent | `~/.prime/agent/skills/context-bleach` |
-| Gemini CLI | `~/.gemini/skills/context-bleach` |
-| OpenCode | `~/.config/opencode/skills/context-bleach` |
-| Cursor | `~/.cursor/skills/context-bleach` |
-| Hermes | `~/.hermes/skills/software-development/context-bleach` |
+| Shared / Codex / generic | `~/.agents/skills/context-bleach` (always; `CODEX_SKILLS_HOME` overrides) |
+| Claude Code | `~/.claude/skills/context-bleach` (if `~/.claude` exists) |
+| Prime Agent | `~/.prime/agent/skills/context-bleach` (if present) |
+| Hermes | `~/.hermes/skills/software-development/context-bleach` (if present) |
+| Gemini CLI, OpenCode, Cursor | best effort, **opt-in only**: `CONTEXT_BLEACH_TARGETS=gemini,opencode,cursor` |
+
+In Claude Code the skill is manual-only (`disable-model-invocation: true`): call it as `/context-bleach`.
 
 Options (environment variables):
 
@@ -40,17 +39,11 @@ curl -fsSL .../install.sh | bash -s -- --uninstall
 
 For an agent without a skills folder, paste `SKILL.md` into its prompt. It needs a shell, file access, and git.
 
-Restart or refresh the agent after install. Then say `context-bleach` (Codex: `$context-bleach`).
+Restart or refresh the agent after install. Then say `context-bleach` for a dry run (Codex: `$context-bleach`).
 
 ## Use
 
-Open the agent in the project and say:
-
-```text
-context-bleach this project
-```
-
-Optional scope lines after the skill name:
+**1. Dry run.** In the project, say:
 
 ```text
 context-bleach
@@ -58,17 +51,28 @@ include: sqlite at ~/data/app.db
 exclude: redis on localhost:6379
 ```
 
-Flow:
+(`include:` and `exclude:` lines are optional.) The agent changes nothing. It prints:
 
-1. The agent does read-only discovery. The root is the git top level of the current directory. It stops if that is not a git repo, a home directory, a filesystem root, or a folder with other projects' repos.
-2. It prints one scope manifest (root, datastores, containers, processes, harness stores). Each item has a verdict: `in scope`, `left alone`, or `skipped`. It then continues. **There is no confirmation step.** Use `include:` and `exclude:` to control scope up front.
-3. It stops the project's processes, makes or reuses branch `reset`, commits a checkpoint, runs a baseline, purges and renames, and proves the baseline again.
-4. It rewrites local history to one orphan commit. The checkpoint is gone after this.
-5. It prints the report in chat only and stops. It asks a question only for an unclear secret or wallet.
+- the scope manifest: root, datastores, containers, processes, harness stores, each `in scope`, `left alone`, or `skipped`
+- the baseline command (not run), KEEP paths, every file it would delete, every rename, the git refs it would destroy, the tables it would truncate
+- one `left alone` list
+- a **token**
+
+**2. Read the report.** Fix scope with `include:` and `exclude:` and dry-run again if it is wrong.
+
+**3. Execute.** Send the token back:
+
+```text
+context-bleach execute 3f9a1c2b7d4e8a10
+```
+
+The agent recomputes the token. If the repo, refs, working tree, or scope changed, it stops and prints a new report. If it matches, it runs the full procedure with no further questions: stop processes, make or reuse branch `reset`, checkpoint, baseline, purge and rename, prove the baseline, rewrite local history to one orphan commit, report in chat, stop. It asks only about an unclear secret or wallet.
+
+The root is the git top level of the current directory. It stops if that is not a git repo, a home directory, a filesystem root, or a folder with other projects' repos.
 
 ## Updates
 
-Every run starts with:
+Every run (dry or execute) starts with:
 
 ```bash
 ~/.claude/skills/context-bleach/scripts/update_check.sh --apply
@@ -94,6 +98,7 @@ Set `CONTEXT_BLEACH_NO_UPDATE=1` to turn the check off. Re-running the install c
 SKILL.md                      the procedure (single source of truth)
 references/harness-locations.md   where agents keep per-project traces
 scripts/update_check.sh       version check and self-update
+scripts/fingerprint.sh        token for the dry-run to execute gate
 agents/openai.yaml            Codex metadata (implicit invocation off)
 install.sh                    curl | bash installer
 tests/test_install.sh         sandbox tests for install and update
