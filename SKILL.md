@@ -23,12 +23,15 @@ Run the updater once, at the start, before discovery. Never run it again later i
 
 Find `<skill-directory>` from the path of this `SKILL.md`, not from the project.
 
+The updater changes only the skill's own install folder, never the project. It is allowed in a dry run. **Exception:** if the skill folder is inside the project root, run it without `--apply` (check only). An update there would change the working tree and break the token.
+
 - `UP_TO_DATE`: continue.
 - `UPDATED`: read the new `SKILL.md` and `references/` again in full, then continue.
+- `UPDATE_AVAILABLE` (check only, or `--apply` could not finish): continue with the installed copy and say a newer version exists.
 - `LOCAL_DIRTY`: keep the installed copy, do not use `--force`, and continue.
-- `ERROR` or a missing script: continue with the installed copy.
+- `DISABLED`, `UNMANAGED`, `ERROR`, or a missing script: continue with the installed copy.
 
-Say nothing about freshness unless the result is `UPDATED` or `LOCAL_DIRTY`.
+Say nothing about freshness unless the result is `UPDATED`, `UPDATE_AVAILABLE`, or `LOCAL_DIRTY`.
 
 Read this whole file and [references/harness-locations.md](references/harness-locations.md) before you change anything. Step 4 or the cleanup may delete project-level agent folders. If this skill was installed inside the project, it may disappear mid-run. Do not depend on re-reading it.
 
@@ -79,11 +82,13 @@ Then print **one scope manifest**. Do not put questions in the manifest.
 
 - **Root**: the git top level of the directory where this was invoked.
   - If the directory is not inside a git repository, stop without acting and say so.
-  - If that top level is a home directory, a filesystem root, or contains other projects' repositories, stop without acting and say so.
+  - If that top level is a home directory, a filesystem root, or contains other projects' repositories, stop without acting and say so. Check for nested repos with `find <root> -mindepth 2 -name .git`.
 - **Processes**: a process belongs to the project if its working directory, script path, or command line is under the root. This includes paths under the root that have since been deleted. It also belongs if a PM2, systemd, cron, or compose entry points into the root.
   - Agent harnesses, editors and their servers, and the agent's own process tree never belong, even when running inside the root.
   - Anything that cannot be linked is left and listed.
+  - How to check: `ps` for command lines and `ls -l /proc/*/cwd` (Linux) or `lsof -d cwd` (macOS) for working directories under the root, including `(deleted)` ones; plus PM2, systemd, cron, and compose definitions.
 - **Containers, images, volumes**: they belong if built from a Dockerfile or compose file in the root.
+  - Proof of ownership: `docker inspect` shows a bind mount, a compose `working_dir` or project label, or an image build context under the root. A grep of the root path in `docker inspect` is enough. No match means not linked: leave it and list the count.
   - A container is a datastore only if it runs a database, cache, or queue engine. Any other container is an application process: stop it in step 1, remove it in step 4.
   - Remove images and volumes if they can be rebuilt from that code and hold no KEEP data or secrets. Otherwise leave them and list them.
 - **Datastores**: local files and loopback services that the project's code or env files create or connect to are in scope, wherever they sit on disk.
@@ -95,6 +100,7 @@ Then print **one scope manifest**. Do not put questions in the manifest.
   - A session whose working directory was the root is deleted whole.
   - A session from another project that only mentions this one is left and listed.
   - In global memory, remove only the entries that mention this project.
+  - Name this live session's own transcript path under **left alone** in the dry run too.
   - Editor workspace storage and local history keyed to the root are in scope.
 
 ### Manifest and report layout
@@ -115,10 +121,10 @@ After the manifest, print these sections. Everything is a plan, not an action. N
 3. **Would delete**: docs files, agent-context paths, logs and caches and artifacts, dead-code candidates (with how you decided they are unreachable), and sample or fixture files nothing reads. Give counts and the full paths. Count the files that carry comments to strip.
 4. **Would rename**: each biased or overfit internal name, old to new, with the role the new name states. Name the external contract names you will not rename.
 5. **Would stop**: the processes, workers, cron jobs, and schedulers from step 1.
-6. **Git**: current branch and HEAD, whether the tree is dirty, whether `reset` already exists, and counts of the local branches, tags, stashes, worktrees, notes, and remote-tracking refs that would be destroyed. Show the `git ls-remote` output, or "no remote".
+6. **Git**: current branch and HEAD, whether the tree is dirty, whether `reset` already exists. List every local branch (the current one included), tag, stash, extra worktree, note, and remote-tracking ref. All are destroyed except `reset`, which is replaced by the orphan commit. Show the `git ls-remote` output, or "no remote".
 7. **Data**: the in-scope tables that would be truncated and the tables kept, and the cache, queue, and vector-store keys that would be flushed.
 8. **Left alone**: one list of everything uncertain, not linked, or skipped, each with a reason.
-9. **Token and command**: the token, and the exact line the user sends to proceed.
+9. **Token inputs, token, and command**: the exact lines fed to `fingerprint.sh`, the token, and the exact line the user sends to proceed.
 
 Compute the token like this (see [Token](#token)):
 
@@ -134,9 +140,18 @@ Then stop. Do not start step 1.
 
 ### Token
 
-The token identifies the root, HEAD, branch, working-tree status, all refs, stashes, remotes, and the in-scope items. If any of them changes, the token changes.
+The token covers: the root, HEAD, branch, working-tree status, all refs, stashes, remotes, the `include:` and `exclude:` lines, and the in-scope items listed below.
 
-Feed `fingerprint.sh` one line per **in-scope** item, as `<section>|<stable id>`. Sections: `datastore`, `container`, `process`, `harness`, `include`, `exclude`. Use stable ids: absolute paths, `host/name`, container names, a process's script or working-directory path. Use harness store directories, not individual transcript files. Never use PIDs or timestamps. Use the same ids in the dry run and in execute mode.
+Feed `fingerprint.sh` one line per item, as `<section>|<stable id>`, using exactly these rules so a second run finds the same lines:
+
+- `datastore|<host>/<name>` for each in-scope datastore, or `datastore|<absolute path>` for a local file.
+- `container|<container name>` for each container in scope.
+- `process|<absolute path of its script or working directory>` for each process to stop.
+- `harness|<absolute path>` for each in-scope store **outside the root**: the store directory (for example `~/.claude/projects/<slug>`), not individual transcript files. Do not list files inside the root. The working-tree status already covers them.
+- `include|<line>` and `exclude|<line>` for each invocation line, verbatim.
+- Never use PIDs, timestamps, counts, or the live session's own transcript.
+
+Print the exact lines you fed in as a **Token inputs** block in the report. In execute mode, if the token does not match and that block is in the conversation, diff your fresh lines against it and show the difference.
 
 ## Execute gate
 
@@ -175,9 +190,9 @@ Execute mode only.
    - Before any commit, confirm every secret file (the first KEEP item) is ignored by git. Add an ignore rule if one is not. Untrack any that is already tracked, without deleting the file.
    - Commit the starting tree to `reset` so later edits can be diffed and reverted. No secret may enter any commit, including the final one.
    - Do not delete branches, tags, stashes, or remote-tracking refs yet.
-3. **Baseline.** Find the entrypoints and the command that proves the project works (tests, build, or smoke run). Reinstall dependencies from lockfiles if the baseline needs them. Run it. This baseline is the only definition of "necessary code". Failures that exist before the purge are recorded, not fixed. The bar is no new failures.
+3. **Baseline.** Find the entrypoints and the command that proves the project works (tests, build, or smoke run). Reinstall dependencies from the lockfile, or from the dependency manifest if there is no lockfile, if the baseline needs them. If no test or build command exists, use the smallest smoke run that imports and calls the entrypoint; the dry run states which. Run it. This baseline is the only definition of "necessary code". Failures that exist before the purge are recorded, not fixed. The bar is no new failures.
 4. **Purge and rename** on `reset`. See [KEEP](#keep), [RENAME](#rename-internal-only-after-the-baseline-is-known), and [PURGE](#completely-purge).
-5. **Proof.** Reinstall dependencies from lockfiles if the baseline needs them. Re-run the baseline, then delete whatever it generated, including those dependencies. This run is the proof. Do not run the baseline again after the history rewrite or the final cleanup.
+5. **Proof.** Reinstall dependencies the same way if the baseline needs them. Re-run the baseline, then delete whatever it generated, including those dependencies. This run is the proof. Do not run the baseline again after the history rewrite or the final cleanup.
    - If it shows new failures, fix forward using the step 2 checkpoint. Do not start step 6 until there are none.
    - If that cannot be done, stop with history intact and report.
 6. **Destroy local history**, on `reset` only:
@@ -194,10 +209,11 @@ Execute mode only.
 
 ## KEEP
 
-- All keys, secrets, wallets, keypairs, certificates, env files, and yaml/toml/json files used for auth. Most are gitignored and untracked. **If you cannot tell whether a file is a secret, it is a secret.**
+- All keys, secrets, wallets, keypairs, certificates, env files, and yaml/toml/json files used for auth. Most are gitignored and untracked. **If you cannot tell whether a file is a secret, it is a secret.** A secret stays even if no code reads it.
 - Code reachable from the entrypoints. Delete the rest.
 - Schema and migrations, the migration-tracking table, and the seed or lookup rows the code needs to boot.
-- Lockfiles, dependency manifests, and LICENSE files.
+- Lockfiles, dependency manifests (`requirements.txt`, `package.json`, `go.mod`, and the like), and LICENSE files.
+- Ignore files that keep secrets out of commits (`.gitignore`, `.dockerignore`). Keep the rules, strip only the comments.
 - Comments the toolchain executes: shebangs, build tags, pragmas, type and lint directives, encoding lines.
 - Text that is runtime behavior even if it looks like docs: prompts, skill and agent definition files, templates, and docstrings read at runtime for CLI help, API schemas, or tool descriptions. Do not edit the text of prompts, templates, or runtime-read docstrings. Only remove code comments around them.
 - Every externally visible contract name: env var names, config keys, table and column names, routes, CLI flags, payload fields, and any name a migration or external client already depends on. Do not rename these.
@@ -209,6 +225,7 @@ Execute mode only.
 - Banned replacements: `data`, `info`, `item`, `thing`, `helper`, `util`, `manager`, `handler`, `processor`, `common`, `misc`, `temp`, `foo`, and any name vaguer than the one it replaced.
 - Do not rename a symbol just to look neutral. If the current name is already the precise technical role, leave it.
 - Update every reference in the same change. This includes strings and non-code files: dynamic imports, reflection, task and job names, serialized type names, package manifests, Dockerfiles, CI, and service or cron definitions.
+- Do not rename the root directory, the repo name, or the git remote. They are outside the purge of identifiers.
 - A rename that does not leave the baseline passing is not done.
 
 ## COMPLETELY PURGE
@@ -222,7 +239,8 @@ Execute mode only.
 - **Local git history and refs** other than `reset`: one orphan commit with a neutral message, no other local branches, tags, stashes, worktrees, notes, or remote-tracking refs, reflog expired, `gc --prune=now`. The remote itself stays.
 - **Logs, build artifacts, generated files, caches, temp files, coverage, virtualenvs, `node_modules`.** Also this project's Docker images, build cache, and volumes that hold no KEEP data or secrets and can be rebuilt from the root, and CI caches and artifacts.
 - **Data**: truncate every in-scope table not in KEEP. Flush this project's keys in in-scope caches, queues, vector stores, and object storage.
-- **Dead code**, unused files, unused dependencies, obsolete scripts, duplication, and sample or fixture files nothing reads.
+- **Dead code**, unused files, (dead means: nothing reachable from the entrypoints uses it, and removing it keeps the baseline green. Code that reads an env var, config key, or route keeps its contract name: if unsure, leave it and list it under **left alone**.)
+- Also remove unused files, unused dependencies, obsolete scripts, duplication, and sample or fixture files nothing reads.
 - **Any trace of this job.** Write no notes, plans, reports, or memories to disk at any point.
 
 ## Doubt
