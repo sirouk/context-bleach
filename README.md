@@ -1,10 +1,26 @@
-# context-bleach
+# context-bleach 🧪🫧
 
-An agent-agnostic skill that resets a project to only the code it needs to work.
+> ## ⚠️ CAUTION
+>
+> **Use at your own risk.** The real run deletes files, agent memory, transcripts, data, and local git history. There are no backups, no trash, and no undo.
+>
+> It always starts as a **read-only dry run**. The real run needs a token from that dry run and refuses to start if anything changed since. It never pushes and never touches the remote, so GitHub keeps its history until you decide otherwise.
+>
+> Read the dry-run report before you send the token. Try it on a throwaway repo first.
 
-It purges docs, comments, agent memory and transcripts, caches, data, and local git history (one orphan commit). It also renames biased internal names.
+sometimes a project needs to be forgotten.
 
-> **The real run is destructive and irreversible.** No backups. No trash. The skill runs only when you name it. It **always starts as a read-only dry run** that prints a report and a token. The real run needs that token and refuses to start if anything changed since. It never pushes and never touches the remote.
+The symptom: progress just stops, and you can't say why. Old docs, old comments, old agent memory, and old history keep pulling the agent back.
+
+context-bleach is an agent-agnostic skill that resets a project to only the code it needs to work.
+
+```text
+dry run → report → token → execute
+docs, comments, agent memory, transcripts, local history → gone
+secrets stay
+```
+
+It purges docs, comments, agent memory and transcripts, caches, data, and local git history (one orphan commit). It also renames biased internal names. Secrets, keys, wallets, env files, lockfiles, and anything the code needs to run stay.
 
 ## Install
 
