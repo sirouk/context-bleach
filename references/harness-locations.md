@@ -22,7 +22,7 @@ timeout 120 find <harness-home> -type f -size -5M -not -path '*/node_modules/*' 
 **Never search from `~`, `/root`, `/home`, `/`, or `/tmp` as a whole, with `grep`, `find`, `rg`, or `locate`.** It can hold gigabytes of transcripts, caches, and Docker data, and the search can run for many minutes. Search only the harness homes in the tables below, one at a time.
 
 - Search by name first: `find <harness-home> -maxdepth 5 -iname "*<slug>*" 2>/dev/null`. It is fast.
-- Then search contents inside that harness home only, and skip large files: `grep -rIl --exclude-dir=node_modules --exclude-dir=.git --max-filesize=5M "<project-root>" <harness-home>`. Use `timeout 120` in front.
+- Then search contents inside that harness home only, and skip large files. `grep` has no portable size flag, so let `find` filter by size (see the second command above). Use `timeout 120` in front.
 - If a search times out, say which harness home it was and put it under **left alone**. Do not retry on the whole home directory.
 - Other harnesses not listed here: look in `~/.config/*/`, `~/.local/share/*/`, and `~/.<name>/` for a tool you know the user runs, one by one.
 

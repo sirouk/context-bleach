@@ -25,10 +25,10 @@ blocked=0
 while IFS= read -r w; do
   [ -d "$w" ] || continue
   [ "$(cd "$w" && pwd -P)" = "$(pwd -P)" ] && continue
-  ign="$(git -C "$w" status --porcelain --ignored --untracked-files=no 2>/dev/null | sed -n 's/^!! //p')"
+  ign="$(git -C "$w" ls-files --others --ignored --exclude-standard --directory 2>/dev/null)"
   if [ -n "$ign" ]; then
     echo "REFUSED: linked worktree $w holds ignored files that may be secrets:" >&2
-    printf '  %s\n' $ign >&2
+    printf '%s\n' "$ign" | sed 's/^/  /' >&2
     blocked=1
   fi
 done < <(git worktree list --porcelain | sed -n 's/^worktree //p')
