@@ -190,7 +190,7 @@ Execute mode only.
    - Run `git ls-remote` and keep its output in context, or record "no remote".
    - Create local branch `reset` from that HEAD and check it out, or continue on it if it already exists.
    - Before any commit, confirm every secret file (the first KEEP item) is ignored by git. Add an ignore rule if one is not. Untrack any that is already tracked, without deleting the file.
-   - Commit the starting tree to `reset` so later edits can be diffed and reverted. No secret may enter any commit, including the final one.
+   - Commit the starting tree to `reset` so later edits can be diffed and reverted. If git has no identity configured, pass one with `-c user.name=... -c user.email=...` for this commit only. Do not change git config. No secret may enter any commit, including the final one.
    - Do not delete branches, tags, stashes, or remote-tracking refs yet.
 3. **Baseline.** Find the entrypoints and the command that proves the project works (tests, build, or smoke run). Reinstall dependencies from the lockfile, or from the dependency manifest if there is no lockfile, if the baseline needs them. If no test or build command exists, use the smallest smoke run that imports and calls the entrypoint; the dry run states which. Run it. This baseline is the only definition of "necessary code". Failures that exist before the purge are recorded, not fixed. The bar is no new failures.
 4. **Purge and rename** on `reset`. See [KEEP](#keep), [RENAME](#rename-internal-only-after-the-baseline-is-known), and [PURGE](#completely-purge).
@@ -198,12 +198,12 @@ Execute mode only.
    - If it shows new failures, fix forward using the step 2 checkpoint. Do not start step 6 until there are none.
    - If that cannot be done, stop with history intact and report.
 6. **Destroy local history**, on `reset` only:
-   - create a single orphan commit with a neutral message
-   - make `reset` point at it
-   - delete every other local branch, tag, stash, worktree, and note
+   - create a single orphan commit with a neutral message and a **neutral author and committer identity** (for example `git -c user.name=reset -c user.email=reset@localhost commit`). Do not use the user's name or email: that is a trace
+   - make `reset` point at it (for example `git checkout --orphan tmp`, commit, then `git branch -M reset`)
+   - delete every other local branch, tag, stash, worktree, and note (`git update-ref -d <ref>` for each ref that `git for-each-ref` lists besides `refs/heads/reset`; `git stash clear`; `git worktree prune`)
    - delete all local remote-tracking refs (`refs/remotes/*`) but keep the remote URL
    - expire the reflog
-   - run `git gc --prune=now`
+   - run `git gc --prune=now` (for example `git reflog expire --expire=now --all && git gc --prune=now`)
    - the step 2 checkpoint does not survive this step
    - do not push
    - no secret may enter this commit
@@ -215,7 +215,7 @@ Execute mode only.
 - Code reachable from the entrypoints. Delete the rest.
 - Schema and migrations, the migration-tracking table, and the seed or lookup rows the code needs to boot.
 - Lockfiles, dependency manifests (`requirements.txt`, `package.json`, `go.mod`, and the like), and LICENSE files.
-- Ignore files that keep secrets out of commits (`.gitignore`, `.dockerignore`). Keep the rules, strip only the comments.
+- Ignore files that keep secrets out of commits (`.gitignore`, `.dockerignore`). Keep the rules, strip only the comments. Drop a rule only if it names an agent folder or file you purged and nothing else in the repo needs it.
 - Comments the toolchain executes: shebangs, build tags, pragmas, type and lint directives, encoding lines.
 - Text that is runtime behavior even if it looks like docs: prompts, skill and agent definition files, templates, and docstrings read at runtime for CLI help, API schemas, or tool descriptions. Do not edit the text of prompts, templates, or runtime-read docstrings. Only remove code comments around them.
 - Every externally visible contract name: env var names, config keys, table and column names, routes, CLI flags, payload fields, and any name a migration or external client already depends on. Do not rename these.
@@ -263,7 +263,7 @@ A dry run is done when the report and token are printed. For execute mode, DONE 
 - The current branch is `reset`. The step 5 baseline run passed with no new failures. It was not re-run after cleanup.
 - A list of every process, worker, cron job, and scheduler stopped in step 1.
 - A statement of what the baseline does and does not exercise. Say whether it loads prompts, job names, serialized type names, Dockerfiles, CI, or cron definitions.
-- A search that finds zero comments or docs outside KEEP.
+- A search that finds zero comments or docs outside KEEP. Pick the comment syntax for each language in the repo (`#`, `//`, `/* */`, `--`, `<!-- -->`, docstrings) and search every tracked file for it. Show the command and its output; every hit must be a KEEP item.
 - Biased or overfit internal names found before the rename are gone, and no banned vague replacement remains.
 - `git for-each-ref` lists only `refs/heads/reset`. `git log --all` shows one commit. `git ls-remote` output matches step 2, or there is still no remote. If the remote differs, report the difference and do nothing.
 - No logs, caches, or artifacts remain. In-scope tables outside KEEP report zero rows.

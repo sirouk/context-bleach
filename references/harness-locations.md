@@ -19,7 +19,7 @@ find ~ -maxdepth 6 \( -name "*<slug>*" -o -name "*<repo-name>*" \) -not -path "<
 grep -rIl --exclude-dir=node_modules --exclude-dir=.git "<project-root>" <harness-home> 2>/dev/null
 ```
 
-**Never grep the whole home directory.** It can hold gigabytes of transcripts, caches, and Docker data, and the search can run for many minutes. Search only the harness homes in the tables below, one at a time.
+**Never search from `~`, `/root`, `/home`, `/`, or `/tmp` as a whole, with `grep`, `find`, `rg`, or `locate`.** It can hold gigabytes of transcripts, caches, and Docker data, and the search can run for many minutes. Search only the harness homes in the tables below, one at a time.
 
 - Search by name first: `find <harness-home> -maxdepth 5 -iname "*<slug>*" 2>/dev/null`. It is fast.
 - Then search contents inside that harness home only, and skip large files: `grep -rIl --exclude-dir=node_modules --exclude-dir=.git --max-filesize=5M "<project-root>" <harness-home>`. Use `timeout 120` in front.
