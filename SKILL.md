@@ -98,7 +98,7 @@ Then print **one scope manifest**. Do not put questions in the manifest.
   - A datastore on another host is skipped and listed, unless named at invocation.
   - State held by external services is never touched. This includes exchange orders and positions and hosted accounts. List what the code is able to create there.
   - Never show credentials. Name datastores by host and name only. For secret files, print the path only: no contents and no key names.
-- **Harness stores**: open every harness and editor store on the machine before ruling on it. Use [references/harness-locations.md](references/harness-locations.md) as a search guide. Search the real machine; do not trust the list.
+- **Harness stores**: open every harness and editor store on the machine before ruling on it. Use [references/harness-locations.md](references/harness-locations.md) as a search guide. Search the real machine, one harness home at a time, with a timeout. Never grep the whole home directory. Do not trust the list.
   - A session whose working directory was the root is deleted whole.
   - A session from another project that only mentions this one is left and listed.
   - In global memory, remove only the entries that mention this project.
