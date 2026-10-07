@@ -122,8 +122,12 @@ check "branch sections removed from .git/config" test -z "$(git -C "$H" config -
 check "remote URL kept" test "$(git -C "$H" remote get-url origin)" = "$T/remote.git"
 check "old history text not found anywhere under .git" test -z "$(grep -rIl --binary-files=text 'OLDMARKER' "$H/.git" 2>/dev/null)"
 check "old commit objects not in the object store" bash -c "cd '$H' && [ \"\$(git cat-file --batch-all-objects --batch-check | wc -l)\" = \"\$(git rev-list --objects reset | wc -l)\" ]"
+mkdir -p "$H/.git/lfs/objects"; echo big > "$H/.git/lfs/objects/x"
+out2="$(cd "$H" && "$D" 2>&1)"; has "$out2" 'WARN: .git/lfs' && has "$out2" 'HISTORY_DESTROYED' && ok "destroy_history warns about LFS and still reports" || bad "lfs warn ($out2)"
 check "ignored secret file untouched" test "$(cat "$H/.env")" = "SECRETFILE"
 
+check "token format is documented" grep -q 'exactly 16 lowercase hex' "$ROOT/SKILL.md"
+check "gate runs a new dry run when the report is gone" grep -q 'run a new dry run and stop' "$ROOT/SKILL.md"
 check "SKILL.md has name" grep -q '^name: context-bleach' "$ROOT/SKILL.md"
 check "skill stays visible (no disable flag)" test -z "$(grep -m1 '^disable-model-invocation' "$ROOT/SKILL.md")"
 check "agent may not supply its own token" grep -q 'Never supply, guess, or reuse a token' "$ROOT/SKILL.md"

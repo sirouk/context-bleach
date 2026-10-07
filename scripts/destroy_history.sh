@@ -53,6 +53,11 @@ total="$(git cat-file --batch-all-objects --batch-check | wc -l | tr -d ' ')"
 reach="$(git rev-list --objects reset | wc -l | tr -d ' ')"
 [ "$total" = "$reach" ] || { echo "FAIL objects: total=$total reachable=$reach"; bad=1; }
 [ -z "$(git config --name-only --get-regexp '^branch\.' 2>/dev/null)" ] || { echo "FAIL: branch sections remain in .git/config"; bad=1; }
+for d in lfs modules; do
+  if [ -d "$git_dir/$d" ] && [ -n "$(ls -A "$git_dir/$d" 2>/dev/null)" ]; then
+    echo "WARN: .git/$d is not empty; objects from old history may remain there (not removed: they may be needed)"
+  fi
+done
 echo "refs: $refs"
 echo "objects: total=$total reachable=$reach"
 echo "worktrees: $(git worktree list | wc -l | tr -d ' ')"

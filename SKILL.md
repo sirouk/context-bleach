@@ -48,7 +48,7 @@ A mismatched token ends with a fresh dry-run report and nothing else. It never l
 
 Execute mode has exactly the same rules, steps, KEEP list, and DONE checks as before. The dry run only adds a gate in front of it. Nothing is relaxed.
 
-If the user says `execute` with no token, treat it as a dry run and tell them the token is needed.
+A token is exactly 16 lowercase hex characters. If the user says `execute` with no token, or with anything else, treat it as a dry run and tell them a token is needed.
 
 **The token must come from the user's own message.** Never supply, guess, or reuse a token yourself, even one you printed earlier in the same turn. Never chain a dry run into execute mode on your own. A stray trigger of this skill can therefore only produce a read-only report.
 
@@ -61,7 +61,7 @@ If the user says `execute` with no token, treat it as a dry run and tell them th
 - Do not write notes, plans, reports, or memories to disk at any point. Report in chat only.
 - Never run `git clean -x` or any ignore-based cleanup. Many secrets are gitignored and untracked.
 - Do not touch anything outside SCOPE.
-- **A dry run changes nothing.** No branch, no file, no stopped process, no baseline run, no dependency install, no network write.
+- **A dry run changes nothing** in the project or on the machine. No branch, no file, no stopped process, no baseline run, no dependency install. The one allowed write is the skill updater changing the skill's own install folder (see [Freshness](#freshness)).
 
 ## Invocation
 
@@ -123,7 +123,7 @@ After the manifest, print these sections. Everything is a plan, not an action. N
 3. **Would delete**: docs files, agent-context paths, logs and caches and artifacts, dead-code candidates (with how you decided they are unreachable), and sample or fixture files nothing reads. Give counts and the full paths. Count the files that carry comments to strip. Every path listed here becomes a `delete|` line in the token inputs.
 4. **Would rename**: each biased or overfit internal name, old to new, with the role the new name states. Name the external contract names you will not rename. Every old name listed here becomes a `rename|` line in the token inputs (old name only).
 5. **Would stop**: the processes, workers, cron jobs, and schedulers from step 1.
-6. **Git**: current branch and HEAD, whether the tree is dirty, whether `reset` already exists. List every local branch (the current one included), tag, stash, note, and remote-tracking ref. List every linked worktree with its path and whether it has uncommitted changes. All are destroyed except `reset`, which is replaced by the orphan commit. Show the `git ls-remote` output, or "no remote".
+6. **Git**: current branch and HEAD, whether the tree is dirty (if so, list every changed and untracked file: uncommitted work is folded into the single commit and the report must show it), whether `reset` already exists. List every local branch (the current one included), tag, stash, note, and remote-tracking ref. List every linked worktree with its path and whether it has uncommitted changes. All are destroyed except `reset`, which is replaced by the orphan commit. Show the `git ls-remote` output, or "no remote".
 7. **Data**: the in-scope tables that would be truncated and the tables kept, and the cache, queue, and vector-store keys that would be flushed. Each becomes a `truncate|` line in the token inputs.
 8. **Left alone**: one list of everything uncertain, not linked, or skipped, each with a reason.
 9. **Token inputs, token, and command**: the exact lines fed to `fingerprint.sh`, the token, and the exact line the user sends to proceed.
@@ -164,11 +164,11 @@ In execute mode, before step 1:
 
 1. **Freeze the skill.** Run `update_check.sh` **without** `--apply` (check only). Never update the skill between the report and the run: the token pins the installed skill commit. If the check says a newer version exists, continue with the installed copy and say so.
 2. Run discovery and the manifest again, with the same `include:` and `exclude:` lines.
-3. **Replay the plan.** If the dry-run report is in this conversation, take its `delete`, `rename`, `truncate`, `datastore`, `container`, `process`, and `harness` lines from the **Token inputs** block verbatim. Do not re-derive them. If the report is not in this conversation, do not guess: run a new dry run and stop.
+3. **Replay the plan.** If the dry-run report is in this conversation, take its `delete`, `rename`, `truncate`, `datastore`, `container`, `process`, and `harness` lines from the **Token inputs** block verbatim. Do not re-derive them. If the report is not in this conversation, or its **Token inputs** block is no longer there word for word (a new session, or it was compacted away), do not guess and do not re-derive: run a new dry run and stop. The user then sends `execute` with the new token.
 4. Recompute the token with `scripts/fingerprint.sh <root>`, feeding those lines. Do this now: the skill folder may be inside the project and be deleted later.
 5. Compare it with the user's token.
    - **Match**: print the manifest and continue to ORDER. Do not ask.
-   - **Mismatch, or the script is missing**: stop. Change nothing. Say what differs (use `fingerprint.sh <root> --lines`), print a fresh dry-run report with the new token, and wait for a new `execute`.
+   - **Mismatch, or the script is missing**: stop. Change nothing. Say what differs: print `fingerprint.sh <root> --lines` and `git status --short` for the root and each linked worktree, print a fresh dry-run report with the new token, and wait for a new `execute`.
 6. If the dry run said **BLOCKED: no baseline**, stop.
 
 **Act only on the plan.** In execute mode, delete, rename, and truncate only targets that are in the token. Anything newly found goes to **left alone**.
@@ -208,8 +208,8 @@ Execute mode only.
 6. **Destroy local history**, on `reset` only:
    - create a single orphan commit with a neutral message and a **neutral author and committer identity** (for example `git -c user.name=reset -c user.email=reset@localhost commit`). Do not use the user's name or email: that is a trace
    - make `reset` point at it (for example `git checkout --orphan tmp`, commit, then `git branch -M reset`)
-   - then run `<skill-directory>/scripts/destroy_history.sh` from the project root. Copy it somewhere outside the project first if the skill folder is inside it. It removes every linked worktree (folder included), every ref except `refs/heads/reset`, stashes, the branch sections in `.git/config`, `ORIG_HEAD` and `FETCH_HEAD`, reflogs, and every unreachable object. It keeps the remote URL, and it refuses to run unless the branch is `reset` with one commit
-   - it prints `HISTORY_DESTROYED` and the proof. Show that output
+   - then run `<skill-directory>/scripts/destroy_history.sh` from the project root. If the skill folder is inside the project, copy this script to a temporary file outside the project **before step 4** (the purge deletes project-level agent folders), run it from there, and delete the copy right after. It removes every linked worktree (folder included), every ref except `refs/heads/reset`, stashes, the branch sections in `.git/config`, `ORIG_HEAD` and `FETCH_HEAD`, reflogs, and every unreachable object. It keeps the remote URL, and it refuses to run unless the branch is `reset` with one commit
+   - it prints `HISTORY_DESTROYED` and the proof. Show that output. It may also print `WARN` lines for Git LFS objects or submodule stores it cannot safely remove: list each under **left alone**
    - if it prints `HISTORY_NOT_CLEAN` or refuses, stop and report
    - the step 2 checkpoint does not survive this step
    - do not push
@@ -251,8 +251,8 @@ Execute mode only.
 - **Local git history and refs** other than `reset`: one orphan commit with a neutral message, no other local branches, tags, stashes, worktrees, notes, or remote-tracking refs, reflog expired, `gc --prune=now`. The remote itself stays.
 - **Logs, build artifacts, generated files, caches, temp files, coverage, virtualenvs, `node_modules`.** Also this project's Docker images, build cache, and volumes that hold no KEEP data or secrets and can be rebuilt from the root, and CI caches and artifacts.
 - **Data**: truncate every in-scope table not in KEEP. Never use `CASCADE`. If a KEEP table references a table due for truncation, leave that table and list it under **left alone**. Find the migration-tracking table from the migration tool the repo uses (names like `schema_migrations`, `alembic_version`, `django_migrations`, and `_prisma_migrations` are examples, not the list). A datastore file that the code recreates on start is deleted whole, with its `-wal` and `-shm` files. Flush this project's keys in in-scope caches, queues, vector stores, and object storage.
-- **Dead code**, unused files, (dead means: nothing reachable from the entrypoints uses it, and removing it keeps the baseline green. Code that reads an env var, config key, or route keeps its contract name: if unsure, leave it and list it under **left alone**.)
-- Also remove unused files, unused dependencies, obsolete scripts, duplication, and sample or fixture files nothing reads.
+- **Dead code** and **unused files**: dead means nothing reachable from the entrypoints uses it, and removing it keeps the baseline green. Code that reads an env var, config key, or route keeps its contract name: if unsure, leave it and list it under **left alone**.
+- Also remove unused dependencies, obsolete scripts, duplication, and sample or fixture files nothing reads.
 - **Any trace of this job.** Write no notes, plans, reports, or memories to disk at any point.
 
 ## Doubt
