@@ -1,6 +1,6 @@
 # Where agent harnesses keep project traces
 
-A search guide for Phase 0, question 3. It is not a complete list. Search the real machine. Tools change their layout, and new tools appear.
+A search guide for the Phase 0 manifest (harness stores). It is not a complete list. Search the real machine. Tools change their layout, and new tools appear.
 
 Two kinds of trace exist:
 
@@ -47,6 +47,14 @@ Project-level agent folders may hold a copy of this skill. It is a trace too, bu
 | Aider | `.aider.chat.history.md`, `.aider.input.history` (in the project or a parent directory) |
 | Copilot, Zed, JetBrains | editor `workspaceStorage`, `~/.config/zed/`, `.idea/` local history |
 | Generic | `~/.agents/`, `~/.config/*/`, `~/.local/share/*/`, `~/.cache/*/` entries that name the project |
+
+## Ruling on a store
+
+Open the store before you rule on it.
+
+- A session whose working directory was the project root: delete it whole.
+- A session from another project that only mentions this one: leave it and list it.
+- Editor workspace storage and local history keyed to the root: in scope.
 
 ## Global files
 

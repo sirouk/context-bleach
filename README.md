@@ -4,7 +4,7 @@ An agent-agnostic skill that resets a project to only the code it needs to work.
 
 It purges docs, comments, agent memory and transcripts, caches, data, and local git history (one orphan commit). It also renames biased internal names.
 
-> **This is destructive and irreversible.** No backups. No trash. The skill runs only when you name it (`context-bleach`). It pauses once, for three scope questions, before it changes anything. It never pushes and never touches the remote.
+> **This is destructive and irreversible.** No backups. No trash. The skill runs only when you name it (`context-bleach`). It prints a scope manifest first and then continues without asking. It never pushes and never touches the remote.
 
 ## Install
 
@@ -50,13 +50,21 @@ Open the agent in the project and say:
 context-bleach this project
 ```
 
+Optional scope lines after the skill name:
+
+```text
+context-bleach
+include: sqlite at ~/data/app.db
+exclude: redis on localhost:6379
+```
+
 Flow:
 
-1. The agent does read-only discovery.
-2. It shows you three things and waits: the project root, the datastores, the agent harnesses with traces.
-3. You answer. Scope is now fixed. It does not ask again, except for an unclear secret or wallet.
-4. It stops processes, makes branch `reset`, runs a baseline, purges and renames, proves the baseline again, then rewrites local history to one orphan commit.
-5. It prints the report in chat only and stops.
+1. The agent does read-only discovery. The root is the git top level of the current directory. It stops if that is not a git repo, a home directory, a filesystem root, or a folder with other projects' repos.
+2. It prints one scope manifest (root, datastores, containers, processes, harness stores). Each item has a verdict: `in scope`, `left alone`, or `skipped`. It then continues. **There is no confirmation step.** Use `include:` and `exclude:` to control scope up front.
+3. It stops the project's processes, makes or reuses branch `reset`, commits a checkpoint, runs a baseline, purges and renames, and proves the baseline again.
+4. It rewrites local history to one orphan commit. The checkpoint is gone after this.
+5. It prints the report in chat only and stops. It asks a question only for an unclear secret or wallet.
 
 ## Updates
 
