@@ -1,0 +1,7 @@
+interface:
+  display_name: "Context Bleach"
+  short_description: "Irreversible project reset: purge docs, comments, agent context, and git history"
+  default_prompt: "Use $context-bleach on this project. Start with read-only discovery and ask me the three scope questions before changing anything."
+
+policy:
+  allow_implicit_invocation: false
