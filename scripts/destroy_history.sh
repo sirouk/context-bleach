@@ -7,6 +7,7 @@
 # It deletes linked worktrees (folder and all), every ref except refs/heads/reset, stashes,
 # branch sections in .git/config, ORIG_HEAD/FETCH_HEAD, reflogs, and unreachable objects.
 set -euo pipefail
+trap 'rc=$?; [ "$rc" = 0 ] || echo "HISTORY_NOT_CLEAN (script stopped at line $LINENO, exit $rc)" >&2' EXIT
 
 top="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "REFUSED: not in a git repository" >&2; exit 2; }
 cd "$top"
@@ -32,7 +33,7 @@ done
 git stash clear 2>/dev/null || true
 
 # 3. branch sections and leftovers that name old history. Remote URLs stay.
-git config --name-only --get-regexp '^branch\.' 2>/dev/null | sed -E 's/^(branch\..*)\.[^.]+$/\1/' | sort -u |
+{ git config --name-only --get-regexp '^branch\.' 2>/dev/null || true; } | sed -E 's/^(branch\..*)\.[^.]+$/\1/' | sort -u |
   while IFS= read -r sec; do git config --remove-section "$sec" 2>/dev/null || true; done
 rm -f "$git_dir/ORIG_HEAD" "$git_dir/FETCH_HEAD" "$git_dir/MERGE_HEAD" "$git_dir/COMMIT_EDITMSG" \
       "$git_dir/packed-refs.old" "$git_dir/gc.log"
@@ -52,7 +53,7 @@ refs="$(git for-each-ref --format='%(refname)')"
 total="$(git cat-file --batch-all-objects --batch-check | wc -l | tr -d ' ')"
 reach="$(git rev-list --objects reset | wc -l | tr -d ' ')"
 [ "$total" = "$reach" ] || { echo "FAIL objects: total=$total reachable=$reach"; bad=1; }
-[ -z "$(git config --name-only --get-regexp '^branch\.' 2>/dev/null)" ] || { echo "FAIL: branch sections remain in .git/config"; bad=1; }
+[ -z "$(git config --name-only --get-regexp '^branch\.' 2>/dev/null || true)" ] || { echo "FAIL: branch sections remain in .git/config"; bad=1; }
 for d in lfs modules; do
   if [ -d "$git_dir/$d" ] && [ -n "$(ls -A "$git_dir/$d" 2>/dev/null)" ]; then
     echo "WARN: .git/$d is not empty; objects from old history may remain there (not removed: they may be needed)"

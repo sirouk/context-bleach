@@ -124,6 +124,10 @@ check "old history text not found anywhere under .git" test -z "$(grep -rIl --bi
 check "old commit objects not in the object store" bash -c "cd '$H' && [ \"\$(git cat-file --batch-all-objects --batch-check | wc -l)\" = \"\$(git rev-list --objects reset | wc -l)\" ]"
 mkdir -p "$H/.git/lfs/objects"; echo big > "$H/.git/lfs/objects/x"
 out2="$(cd "$H" && "$D" 2>&1)"; has "$out2" 'WARN: .git/lfs' && has "$out2" 'HISTORY_DESTROYED' && ok "destroy_history warns about LFS and still reports" || bad "lfs warn ($out2)"
+# repo that never had branch config sections or a remote (the common case)
+N="$T/plain"; git init -q -b main "$N"; echo a > "$N/a.txt"; git -C "$N" add -A; git -C "$N" commit -q -m one
+git -C "$N" checkout -q --orphan tmp; git -C "$N" add -A; git -C "$N" commit -q -m "Initial commit"; git -C "$N" branch -M reset
+out3="$(cd "$N" && "$D" 2>&1)"; has "$out3" 'HISTORY_DESTROYED' && ok "destroy_history works with no branch config or remote" || bad "plain repo ($out3)"
 check "ignored secret file untouched" test "$(cat "$H/.env")" = "SECRETFILE"
 
 check "token format is documented" grep -q 'exactly 16 lowercase hex' "$ROOT/SKILL.md"
