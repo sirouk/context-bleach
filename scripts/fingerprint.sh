@@ -11,9 +11,9 @@
 #
 # stdin: one plan item per line, as "<section>|<stable id>".
 #   sections: datastore, container, process, harness, include, exclude,
-#             delete, rename, truncate
+#             delete, rename, truncate, line
 #   ids must be stable: absolute paths, host/name, container names, old names,
-#   <store>/<table>. Never PIDs, timestamps, counts, or newly chosen names.
+#   <store>/<table>, <file>|<exact line>. Never PIDs, timestamps, counts, or newly chosen names.
 # --lines prints the canonical lines instead of the hash (use it to explain a mismatch).
 set -uo pipefail
 

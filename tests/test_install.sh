@@ -124,6 +124,17 @@ check "old history text not found anywhere under .git" test -z "$(grep -rIl --bi
 check "old commit objects not in the object store" bash -c "cd '$H' && [ \"\$(git cat-file --batch-all-objects --batch-check | wc -l)\" = \"\$(git rev-list --objects reset | wc -l)\" ]"
 mkdir -p "$H/.git/lfs/objects"; echo big > "$H/.git/lfs/objects/x"
 out2="$(cd "$H" && "$D" 2>&1)"; has "$out2" 'WARN: .git/lfs' && has "$out2" 'HISTORY_DESTROYED' && ok "destroy_history warns about LFS and still reports" || bad "lfs warn ($out2)"
+# a linked worktree holding an ignored (possible secret) file blocks the wipe until it is dealt with
+W="$T/wtsec"; git init -q -b main "$W"; echo a > "$W/a.txt"; echo .env > "$W/.gitignore"; git -C "$W" add -A; git -C "$W" commit -q -m one
+git -C "$W" branch side; git -C "$W" worktree add -q "$T/wtsec-wt" side; echo KEY=1 > "$T/wtsec-wt/.env"
+git -C "$W" checkout -q --orphan tmp; git -C "$W" add -A; git -C "$W" commit -q -m "Initial commit"; git -C "$W" branch -M reset
+out4="$(cd "$W" && "$D" 2>&1)"; rc4=$?
+[ "$rc4" -eq 2 ] && has "$out4" 'REFUSED: linked worktree' && ok "destroy_history refuses a worktree holding ignored files" || bad "worktree secret refusal ($rc4 $out4)"
+check "worktree and its ignored file untouched after refusal" test -f "$T/wtsec-wt/.env"
+mv "$T/wtsec-wt/.env" "$W/.env"
+out5="$(cd "$W" && "$D" 2>&1)"; has "$out5" 'HISTORY_DESTROYED' && ok "destroy_history proceeds once the secret is in the root" || bad "after move ($out5)"
+check "the moved secret survives" test "$(cat "$W/.env")" = "KEY=1"
+
 # repo that never had branch config sections or a remote (the common case)
 N="$T/plain"; git init -q -b main "$N"; echo a > "$N/a.txt"; git -C "$N" add -A; git -C "$N" commit -q -m one
 git -C "$N" checkout -q --orphan tmp; git -C "$N" add -A; git -C "$N" commit -q -m "Initial commit"; git -C "$N" branch -M reset
@@ -132,6 +143,8 @@ check "ignored secret file untouched" test "$(cat "$H/.env")" = "SECRETFILE"
 
 check "token format is documented" grep -q 'exactly 16 lowercase hex' "$ROOT/SKILL.md"
 check "gate runs a new dry run when the report is gone" grep -q 'run a new dry run and stop' "$ROOT/SKILL.md"
+check "no ripgrep-only flag in the search guide" test -z "$(grep -r -e '--max-filesize' "$ROOT/SKILL.md" "$ROOT/references" || true)"
+check "line| token section documented" grep -q 'line|<absolute path>|<exact line text>' "$ROOT/SKILL.md"
 check "SKILL.md has name" grep -q '^name: context-bleach' "$ROOT/SKILL.md"
 check "skill stays visible (no disable flag)" test -z "$(grep -m1 '^disable-model-invocation' "$ROOT/SKILL.md")"
 check "agent may not supply its own token" grep -q 'Never supply, guess, or reuse a token' "$ROOT/SKILL.md"

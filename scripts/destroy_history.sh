@@ -19,7 +19,22 @@ branch="$(git symbolic-ref -q --short HEAD || true)"
 [ "$(git rev-list --count reset)" = "1" ] || { echo "REFUSED: reset must be exactly one (orphan) commit first" >&2; exit 2; }
 [ -z "$(git status --porcelain --untracked-files=no)" ] || { echo "REFUSED: tracked files have uncommitted changes" >&2; exit 2; }
 
-# 1. linked worktrees: remove folder and record
+# 1a. a linked worktree may hold gitignored files (.env, keys). Those could be secrets and stay.
+#     Refuse before deleting anything; the agent moves real secrets into the root, removes the rest, and reruns.
+blocked=0
+while IFS= read -r w; do
+  [ -d "$w" ] || continue
+  [ "$(cd "$w" && pwd -P)" = "$(pwd -P)" ] && continue
+  ign="$(git -C "$w" status --porcelain --ignored --untracked-files=no 2>/dev/null | sed -n 's/^!! //p')"
+  if [ -n "$ign" ]; then
+    echo "REFUSED: linked worktree $w holds ignored files that may be secrets:" >&2
+    printf '  %s\n' $ign >&2
+    blocked=1
+  fi
+done < <(git worktree list --porcelain | sed -n 's/^worktree //p')
+[ "$blocked" = 0 ] || { echo "Move any secret into the same relative path under $top (or list it under left alone), delete the rest, then run this again." >&2; exit 2; }
+
+# 1b. linked worktrees: remove folder and record
 git worktree list --porcelain | sed -n 's/^worktree //p' | while IFS= read -r w; do
   [ "$(cd "$w" 2>/dev/null && pwd -P || echo "$w")" = "$(pwd -P)" ] && continue
   git worktree remove --force --force "$w" 2>/dev/null || rm -rf "$w"

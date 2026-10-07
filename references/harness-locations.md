@@ -16,7 +16,7 @@ Two kinds of trace exist:
 # names that embed the path or repo name (fast)
 timeout 60 find <harness-home> -maxdepth 5 \( -iname "*<slug>*" -o -iname "*<repo-name>*" \) 2>/dev/null
 # contents that mention the root (skip big files)
-timeout 120 grep -rIl --max-filesize=5M --exclude-dir=node_modules --exclude-dir=.git "<project-root>" <harness-home> 2>/dev/null
+timeout 120 find <harness-home> -type f -size -5M -not -path '*/node_modules/*' -not -path '*/.git/*' -exec grep -Il -F -- "<project-root>" {} + 2>/dev/null
 ```
 
 **Never search from `~`, `/root`, `/home`, `/`, or `/tmp` as a whole, with `grep`, `find`, `rg`, or `locate`.** It can hold gigabytes of transcripts, caches, and Docker data, and the search can run for many minutes. Search only the harness homes in the tables below, one at a time.

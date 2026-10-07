@@ -123,7 +123,7 @@ After the manifest, print these sections. Everything is a plan, not an action. N
 3. **Would delete**: docs files, agent-context paths, logs and caches and artifacts, dead-code candidates (with how you decided they are unreachable), and sample or fixture files nothing reads. Give counts and the full paths. Count the files that carry comments to strip. Every path listed here becomes a `delete|` line in the token inputs.
 4. **Would rename**: each biased or overfit internal name, old to new, with the role the new name states. Name the external contract names you will not rename. Every old name listed here becomes a `rename|` line in the token inputs (old name only).
 5. **Would stop**: the processes, workers, cron jobs, and schedulers from step 1.
-6. **Git**: current branch and HEAD, whether the tree is dirty (if so, list every changed and untracked file: uncommitted work is folded into the single commit and the report must show it), whether `reset` already exists. List every local branch (the current one included), tag, stash, note, and remote-tracking ref. List every linked worktree with its path and whether it has uncommitted changes. All are destroyed except `reset`, which is replaced by the orphan commit. Show the `git ls-remote` output, or "no remote".
+6. **Git**: current branch and HEAD, whether the tree is dirty (if so, list every changed and untracked file: uncommitted work in the root is folded into the single commit and the report must show it), whether `reset` already exists. List every local branch (the current one included), tag, stash, note, and remote-tracking ref. List every linked worktree with its path, every uncommitted or untracked file in it, and every gitignored file in it (possible secrets). Uncommitted work in a linked worktree is deleted with the worktree: it is not folded into the single commit. Show it in the report so the user sees it. All are destroyed except `reset`, which is replaced by the orphan commit. Show the `git ls-remote` output, or "no remote".
 7. **Data**: the in-scope tables that would be truncated and the tables kept, and the cache, queue, and vector-store keys that would be flushed. Each becomes a `truncate|` line in the token inputs.
 8. **Left alone**: one list of everything uncertain, not linked, or skipped, each with a reason.
 9. **Token inputs, token, and command**: the exact lines fed to `fingerprint.sh`, the token, and the exact line the user sends to proceed.
@@ -149,10 +149,11 @@ You feed it the plan, one line per item, as `<section>|<stable id>`. Use exactly
 - `datastore|<host>/<name>` for each in-scope datastore, or `datastore|<absolute path>` for a local file.
 - `container|<container name>` for each container in scope.
 - `process|<absolute path of its script or working directory>` for each process to stop.
-- `harness|<absolute path>` for each in-scope store **outside the root**: the store directory (for example `~/.claude/projects/<slug>`), not individual transcript files. Files inside the root are covered by the built-in contents hash.
+- `harness|<absolute path>` for each in-scope store **outside the root** that is deleted whole: the store directory (for example `~/.claude/projects/<slug>`), not individual transcript files. A global file that only loses lines gets `line|` lines instead. Files inside the root are covered by the built-in contents hash.
 - `delete|<path>` for each file or folder the plan deletes. For a whole folder, list the folder, not its files.
 - `rename|<old name>` for each internal name the plan renames. **Do not include the new name.** Agents choose new names differently between runs, and that would break the token.
-- `truncate|<store>/<table>` for each table the plan truncates or key prefix it flushes.
+- `truncate|<store>/<table>` for each table the plan truncates or key prefix it flushes. A datastore file deleted whole gets a `datastore|` line and a `delete|` line, and no `truncate|` lines.
+- `line|<absolute path>|<exact line text>` for each line the plan removes from a global file that stays (global instructions or memory). Global files are not content-hashed: they change whenever other sessions run. These lines pin which lines go.
 - `include|<line>` and `exclude|<line>` for each invocation line, verbatim.
 - Never use PIDs, timestamps, counts, or the live session's own transcript.
 
@@ -164,7 +165,7 @@ In execute mode, before step 1:
 
 1. **Freeze the skill.** Run `update_check.sh` **without** `--apply` (check only). Never update the skill between the report and the run: the token pins the installed skill commit. If the check says a newer version exists, continue with the installed copy and say so.
 2. Run discovery and the manifest again, with the same `include:` and `exclude:` lines.
-3. **Replay the plan.** If the dry-run report is in this conversation, take its `delete`, `rename`, `truncate`, `datastore`, `container`, `process`, and `harness` lines from the **Token inputs** block verbatim. Do not re-derive them. If the report is not in this conversation, or its **Token inputs** block is no longer there word for word (a new session, or it was compacted away), do not guess and do not re-derive: run a new dry run and stop. The user then sends `execute` with the new token.
+3. **Replay the plan.** If the dry-run report is in this conversation, take its `delete`, `rename`, `truncate`, `line`, `datastore`, `container`, `process`, and `harness` lines from the **Token inputs** block verbatim. Do not re-derive them. If the report is not in this conversation, or its **Token inputs** block is no longer there word for word (a new session, or it was compacted away), do not guess and do not re-derive: run a new dry run and stop. The user then sends `execute` with the new token.
 4. Recompute the token with `scripts/fingerprint.sh <root>`, feeding those lines. Do this now: the skill folder may be inside the project and be deleted later.
 5. Compare it with the user's token.
    - **Match**: print the manifest and continue to ORDER. Do not ask.
@@ -182,7 +183,7 @@ Anything outside this is not yours to touch.
 - **Project root**: the git top level ruled in by the ownership rules.
 - **Databases and stores**: the datastores ruled in scope.
 - **Git remote**: leave the remote and its URL. Do not fetch, push, force-push, or delete remote branches, tags, or PRs. Remote history stays until a human decides otherwise. Local remote-tracking refs are in scope and will be deleted.
-- **Linked worktrees**: every linked worktree of this repo is in scope, even one that sits outside the root. List each in the dry run with its path and whether it has uncommitted changes. They are removed in step 6.
+- **Linked worktrees**: every linked worktree of this repo is in scope, even one that sits outside the root. List each in the dry run with its path and its uncommitted and ignored files. They are removed in step 6, except that possible secrets inside them are moved to the root first.
 - **Working branch**: create and check out local branch `reset` from the current HEAD before any purge. If `reset` already exists from an earlier run, continue on it. It is the one existing branch you may commit to. All edits and the history rewrite happen only on `reset`.
 - **Agent harnesses**: the stores ruled in scope.
 
@@ -209,6 +210,7 @@ Execute mode only.
    - create a single orphan commit with a neutral message and a **neutral author and committer identity** (for example `git -c user.name=reset -c user.email=reset@localhost commit`). Do not use the user's name or email: that is a trace
    - make `reset` point at it (for example `git checkout --orphan tmp`, commit, then `git branch -M reset`)
    - then run `<skill-directory>/scripts/destroy_history.sh` from the project root. If the skill folder is inside the project, copy this script to a temporary file outside the project **before step 4** (the purge deletes project-level agent folders), run it from there, and delete the copy right after. It removes every linked worktree (folder included), every ref except `refs/heads/reset`, stashes, the branch sections in `.git/config`, `ORIG_HEAD` and `FETCH_HEAD`, reflogs, and every unreachable object. It keeps the remote URL, and it refuses to run unless the branch is `reset` with one commit
+   - if it refuses because a linked worktree holds gitignored files, treat each one as a possible secret: move real secrets to the same relative path under the root (if the root has none there; otherwise stop and list it under **left alone**), delete the rest, then run it again. Never delete a possible secret to get past this
    - it prints `HISTORY_DESTROYED` and the proof. Show that output. It may also print `WARN` lines for Git LFS objects or submodule stores it cannot safely remove: list each under **left alone**
    - if it prints `HISTORY_NOT_CLEAN` or refuses, stop and report
    - the step 2 checkpoint does not survive this step
