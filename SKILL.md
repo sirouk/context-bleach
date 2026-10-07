@@ -44,7 +44,7 @@ The dry run always comes first. The real run never starts without a token from a
 | `context-bleach` | **dry run** (default) | Read-only. Prints the full report and a token, then stops. |
 | `context-bleach execute <token>` | **execute** | Recomputes the token. If it matches, runs the full procedure. If not, stops and changes nothing. |
 
-A mismatched token ends with a fresh dry-run report and nothing else. It never leads into execute mode by itself.
+A mismatched token ends with a fresh dry-run report and nothing else. The fresh report carries a new token for the user to send; printing it is fine, using it yourself is not. It never leads into execute mode by itself.
 
 Execute mode has exactly the same rules, steps, KEEP list, and DONE checks as before. The dry run only adds a gate in front of it. Nothing is relaxed.
 
@@ -87,6 +87,7 @@ Then print **one scope manifest**. Do not put questions in the manifest.
   - If that top level is a home directory, a filesystem root, or contains other projects' repositories, stop without acting and say so. Check for nested repos with `find <root> -mindepth 2 -name .git -not -path '*/node_modules/*'`, then drop submodules (`git submodule status`) and any path git ignores (`git check-ignore`). Only a full separate repo counts.
 - **Processes**: a process belongs to the project if its working directory, script path, or command line is under the root. This includes paths under the root that have since been deleted. It also belongs if a PM2, systemd, cron, or compose entry points into the root.
   - Agent harnesses, editors and their servers, and the agent's own process tree never belong, even when running inside the root.
+  - Your own tree is your shell, your agent process, and their parents and children. A process whose parent chain (`ps -o ppid=`) leads to your agent is yours. Anything else under the root that you cannot tie to the project is left and listed, not stopped.
   - Anything that cannot be linked is left and listed.
   - How to check: `ps` for command lines and `ls -l /proc/*/cwd` (Linux) or `lsof -d cwd` (macOS) for working directories under the root, including `(deleted)` ones; plus PM2, systemd, cron, and compose definitions.
 - **Containers, images, volumes**: they belong if built from a Dockerfile or compose file in the root.
@@ -159,17 +160,19 @@ You feed it the plan, one line per item, as `<section>|<stable id>`. Use exactly
 
 Print the exact lines you fed in as a **Token inputs** block in the report.
 
+Usage: `printf '%s\n' "<line>" "<line>" | <skill-directory>/scripts/fingerprint.sh <root>` prints the token. Add `--lines` after the root to print the canonical lines instead. With no plan lines, use `fingerprint.sh <root> </dev/null`.
+
 ## Execute gate
 
 In execute mode, before step 1:
 
-1. **Freeze the skill.** Run `update_check.sh` **without** `--apply` (check only). Never update the skill between the report and the run: the token pins the installed skill commit. If the check says a newer version exists, continue with the installed copy and say so.
+1. **Freeze the skill.** Run `update_check.sh` **without** `--apply` (check only). Never update the skill between the report and the run: the token pins the installed skill commit. If the check says a newer version exists, continue with the installed copy and say so once, in the manifest.
 2. Run discovery and the manifest again, with the same `include:` and `exclude:` lines.
 3. **Replay the plan.** If the dry-run report is in this conversation, take its `delete`, `rename`, `truncate`, `line`, `datastore`, `container`, `process`, and `harness` lines from the **Token inputs** block verbatim. Do not re-derive them. If the report is not in this conversation, or its **Token inputs** block is no longer there word for word (a new session, or it was compacted away), do not guess and do not re-derive: run a new dry run and stop. The user then sends `execute` with the new token.
 4. Recompute the token with `scripts/fingerprint.sh <root>`, feeding those lines. Do this now: the skill folder may be inside the project and be deleted later.
 5. Compare it with the user's token.
    - **Match**: print the manifest and continue to ORDER. Do not ask.
-   - **Mismatch, or the script is missing**: stop. Change nothing. Say what differs: print `fingerprint.sh <root> --lines` and `git status --short` for the root and each linked worktree, print a fresh dry-run report with the new token, and wait for a new `execute`.
+   - **Mismatch, or the script is missing**: stop. Change nothing. Say what differs: print `fingerprint.sh <root> --lines` and `git status --short` for the root and each linked worktree, then print a **full fresh dry-run report** (all nine sections, with a Token inputs block that includes any new files as `delete|` lines) and its new token, and wait for a new `execute`.
 6. If the dry run said **BLOCKED: no baseline**, stop.
 
 **Act only on the plan.** In execute mode, delete, rename, and truncate only targets that are in the token. Anything newly found goes to **left alone**.
