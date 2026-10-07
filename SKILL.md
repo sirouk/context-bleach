@@ -142,7 +142,7 @@ Then stop. Do not start step 1.
 
 ### Token
 
-`fingerprint.sh` builds in, with no input: the root, HEAD, branch, all refs, stashes, remotes, the installed skill commit, a hash of the **contents** of every tracked and untracked (non-ignored) file, and the same for every linked worktree of this repo. Editing any file changes the token.
+`fingerprint.sh` builds in, with no input: the root, HEAD, branch, all refs, stashes, remotes, the installed skill commit, a hash of the **contents** of every tracked and untracked (non-ignored) file, and the same for every linked worktree of this repo. Editing any of those files changes the token. It does **not** hash gitignored files (secrets, `node_modules`, datastore contents) or global files outside the root; those change too often or are too large. The plan lines below pin what gets deleted, truncated, or edited there.
 
 You feed it the plan, one line per item, as `<section>|<stable id>`. Use exactly these rules so a second run finds the same lines:
 
@@ -150,7 +150,7 @@ You feed it the plan, one line per item, as `<section>|<stable id>`. Use exactly
 - `container|<container name>` for each container in scope.
 - `process|<absolute path of its script or working directory>` for each process to stop.
 - `harness|<absolute path>` for each in-scope store **outside the root** that is deleted whole: the store directory (for example `~/.claude/projects/<slug>`), not individual transcript files. A global file that only loses lines gets `line|` lines instead. Files inside the root are covered by the built-in contents hash.
-- `delete|<path>` for each file or folder the plan deletes. For a whole folder, list the folder, not its files.
+- `delete|<absolute path>` for each file or folder the plan deletes. For a whole folder, list the folder, not its files. Worktrees, branches, tags, and stashes need no lines: the built-in hash of the refs and worktrees covers them.
 - `rename|<old name>` for each internal name the plan renames. **Do not include the new name.** Agents choose new names differently between runs, and that would break the token.
 - `truncate|<store>/<table>` for each table the plan truncates or key prefix it flushes. A datastore file deleted whole gets a `datastore|` line and a `delete|` line, and no `truncate|` lines.
 - `line|<absolute path>|<exact line text>` for each line the plan removes from a global file that stays (global instructions or memory). Global files are not content-hashed: they change whenever other sessions run. These lines pin which lines go.
@@ -182,7 +182,7 @@ Anything outside this is not yours to touch.
 
 - **Project root**: the git top level ruled in by the ownership rules.
 - **Databases and stores**: the datastores ruled in scope.
-- **Git remote**: leave the remote and its URL. Do not fetch, push, force-push, or delete remote branches, tags, or PRs. Remote history stays until a human decides otherwise. Local remote-tracking refs are in scope and will be deleted.
+- **Git remote**: leave the remote and its URL. The only remote contact allowed is the read-only `git ls-remote` (in both modes). If it cannot reach the remote, record that as the result and continue. Do not fetch, push, force-push, or delete remote branches, tags, or PRs. Remote history stays until a human decides otherwise. Local remote-tracking refs are in scope and will be deleted.
 - **Linked worktrees**: every linked worktree of this repo is in scope, even one that sits outside the root. List each in the dry run with its path and its uncommitted and ignored files. They are removed in step 6, except that possible secrets inside them are moved to the root first.
 - **Working branch**: create and check out local branch `reset` from the current HEAD before any purge. If `reset` already exists from an earlier run, continue on it. It is the one existing branch you may commit to. All edits and the history rewrite happen only on `reset`.
 - **Agent harnesses**: the stores ruled in scope.
@@ -255,6 +255,7 @@ Execute mode only.
 - **Data**: truncate every in-scope table not in KEEP. Never use `CASCADE`. If a KEEP table references a table due for truncation, leave that table and list it under **left alone**. Find the migration-tracking table from the migration tool the repo uses (names like `schema_migrations`, `alembic_version`, `django_migrations`, and `_prisma_migrations` are examples, not the list). A datastore file that the code recreates on start is deleted whole, with its `-wal` and `-shm` files. Flush this project's keys in in-scope caches, queues, vector stores, and object storage.
 - **Dead code** and **unused files**: dead means nothing reachable from the entrypoints uses it, and removing it keeps the baseline green. Code that reads an env var, config key, or route keeps its contract name: if unsure, leave it and list it under **left alone**.
 - Also remove unused dependencies, obsolete scripts, duplication, and sample or fixture files nothing reads.
+- Directories left empty by the purge (git does not track them, so they would linger on disk).
 - **Any trace of this job.** Write no notes, plans, reports, or memories to disk at any point.
 
 ## Doubt

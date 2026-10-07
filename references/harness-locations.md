@@ -26,7 +26,7 @@ timeout 120 find <harness-home> -type f -size -5M -not -path '*/node_modules/*' 
 - If a search times out, say which harness home it was and put it under **left alone**. Do not retry on the whole home directory.
 - Other harnesses not listed here: look in `~/.config/*/`, `~/.local/share/*/`, and `~/.<name>/` for a tool you know the user runs, one by one.
 
-Do not follow symlinks out of the harness home. Do not match on a short repo name alone if it is common. Confirm the match.
+Do not follow symlinks out of the harness home. Search each harness home for the full project root path first, then for the repo name. A hit on the root path is strong. A hit on the repo name alone is weak: open the file and confirm it is this project before ruling it in scope.
 
 ## Inside the project root
 
