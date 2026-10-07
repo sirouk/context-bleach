@@ -28,7 +28,7 @@ S="$HOME/.claude/skills/context-bleach"
 check "updater is executable" test -x "$S/scripts/update_check.sh"
 check "fingerprint is executable" test -x "$S/scripts/fingerprint.sh"
 check "metadata has 40-hex commit" grep -Eq '"commit": "[0-9a-f]{40}"' "$S/.context-bleach-install.json"
-check "metadata hashes every file" test "$(grep -c '": "[0-9a-f]\{64\}"' "$S/.context-bleach-install.json")" -eq 6
+check "metadata hashes every file" test "$(grep -c '": "[0-9a-f]\{64\}"' "$S/.context-bleach-install.json")" -eq 7
 
 # 2. up to date
 out="$(bash "$S/scripts/update_check.sh" --apply)"; has "$out" '^UP_TO_DATE' && ok "UP_TO_DATE" || bad "UP_TO_DATE ($out)"
@@ -87,6 +87,42 @@ git -C "$T/fp" tag -d v1 >/dev/null; t6="$(printf 'datastore|h/a\nharness|/x\n' 
 mkdir -p "$T/notgit"; printf '' | "$F" "$T/notgit" >/dev/null 2>&1; [ $? -eq 2 ] && ok "fingerprint refuses non-git dir" || bad "non-git"
 check "fingerprint --lines prints canonical lines" bash -c "printf 'harness|/x\n' | '$F' '$T/fp' --lines | grep -q '^harness|/x'"
 check "dry run left no git changes" test -z "$(git -C "$T/fp" status --porcelain)"
+
+# 10. token covers file contents, linked worktrees, and the skill commit
+G="$T/fc"; git init -q -b main "$G"; printf 'a\n' > "$G/app.txt"; git -C "$G" add -A; git -C "$G" -c user.name=t -c user.email=t@t commit -q -m a
+c0="$("$F" "$G" </dev/null)"
+echo v1 > "$G/untracked.txt"; c1="$("$F" "$G" </dev/null)"; echo v2 > "$G/untracked.txt"; c2="$("$F" "$G" </dev/null)"
+[ "$c0" != "$c1" ] && [ "$c1" != "$c2" ] && ok "token changes when an untracked file's content changes" || bad "untracked content ($c0 $c1 $c2)"
+echo m1 >> "$G/app.txt"; d1="$("$F" "$G" </dev/null)"; echo m2 >> "$G/app.txt"; d2="$("$F" "$G" </dev/null)"
+[ "$d1" != "$d2" ] && ok "token changes on a second edit of a modified file" || bad "modified content"
+git -C "$G" checkout -q -- app.txt; rm "$G/untracked.txt"; e0="$("$F" "$G" </dev/null)"
+[ "$e0" = "$c0" ] && ok "token returns when contents return" || bad "token restore ($e0 $c0)"
+git -C "$G" branch plan; git -C "$G" worktree add -q "$T/fcwt" plan
+w1="$("$F" "$G" </dev/null)"; echo edit > "$T/fcwt/x.txt"; w2="$("$F" "$G" </dev/null)"
+[ "$w1" != "$w2" ] && [ "$w1" != "$c0" ] && ok "token covers linked worktrees" || bad "worktree ($c0 $w1 $w2)"
+"$F" "$G" --lines </dev/null | grep -q '^skill|none$' && ok "token has a skill line" || bad "skill line"
+"$S/scripts/fingerprint.sh" "$G" --lines </dev/null | grep -Eq '^skill\|[0-9a-f]{40}$' && ok "installed copy pins its skill commit" || bad "installed skill commit"
+
+# 11. destroy_history: refuses unsafe states, leaves nothing behind
+H="$T/hist"; git init -q -b main "$H"; export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
+echo "OLDMARKER-readme" > "$H/README.md"; echo code > "$H/app.txt"; echo SECRETFILE > "$H/.env"; echo .env > "$H/.gitignore"
+git -C "$H" add -A; git -C "$H" commit -q -m one; git -C "$H" tag v1; git -C "$H" branch plan
+git -C "$H" worktree add -q "$T/histwt" plan; echo "OLDMARKER-plan" > "$T/histwt/plan.md"; git -C "$T/histwt" add -A; git -C "$T/histwt" commit -q -m plan
+git -C "$H" remote add origin "$T/remote.git"; git -C "$H" config branch.main.remote origin; git -C "$H" config branch.main.merge refs/heads/main
+git -C "$H" stash list >/dev/null
+D="$ROOT/scripts/destroy_history.sh"
+(cd "$H" && "$D" >/dev/null 2>&1); [ $? -eq 2 ] && ok "destroy_history refuses off the reset branch" || bad "off-reset refusal"
+git -C "$H" checkout -q -b reset; git -C "$H" rm -q README.md; git -C "$H" commit -q -m two
+(cd "$H" && "$D" >/dev/null 2>&1); [ $? -eq 2 ] && ok "destroy_history refuses without a single commit" || bad "multi-commit refusal"
+git -C "$H" checkout -q --orphan tmp; git -C "$H" add -A; git -C "$H" commit -q -m "Initial commit"; git -C "$H" branch -M reset
+out="$(cd "$H" && "$D" 2>&1)"; has "$out" 'HISTORY_DESTROYED' && ok "destroy_history reports clean" || bad "destroy_history ($out)"
+check "only refs/heads/reset remains" test "$(git -C "$H" for-each-ref --format='%(refname)')" = "refs/heads/reset"
+check "linked worktree folder is gone" test ! -e "$T/histwt"
+check "branch sections removed from .git/config" test -z "$(git -C "$H" config --name-only --get-regexp '^branch\.' 2>/dev/null)"
+check "remote URL kept" test "$(git -C "$H" remote get-url origin)" = "$T/remote.git"
+check "old history text not found anywhere under .git" test -z "$(grep -rIl --binary-files=text 'OLDMARKER' "$H/.git" 2>/dev/null)"
+check "old commit objects not in the object store" bash -c "cd '$H' && [ \"\$(git cat-file --batch-all-objects --batch-check | wc -l)\" = \"\$(git rev-list --objects reset | wc -l)\" ]"
+check "ignored secret file untouched" test "$(cat "$H/.env")" = "SECRETFILE"
 
 check "SKILL.md has name" grep -q '^name: context-bleach' "$ROOT/SKILL.md"
 check "skill stays visible (no disable flag)" test -z "$(grep -m1 '^disable-model-invocation' "$ROOT/SKILL.md")"

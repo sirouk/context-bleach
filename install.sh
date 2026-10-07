@@ -37,6 +37,7 @@ FILES=(
   references/harness-locations.md
   scripts/update_check.sh
   scripts/fingerprint.sh
+  scripts/destroy_history.sh
   LICENSE
 )
 
@@ -193,7 +194,7 @@ populate() {
     if [ -n "$SRC" ]; then cp "$SRC/$f" "$dest/$f" || return 1
     else curl -fsSL "$RAW/$f" -o "$dest/$f" || return 1; fi
   done
-  chmod +x "$dest/scripts/update_check.sh" "$dest/scripts/fingerprint.sh"
+  chmod +x "$dest/scripts/update_check.sh" "$dest/scripts/fingerprint.sh" "$dest/scripts/destroy_history.sh"
   write_meta "$dest"
 }
 
