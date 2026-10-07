@@ -42,6 +42,12 @@ sed -i 's/^# edit$//' "$S/SKILL.md"; sed -i '${/^$/d}' "$S/SKILL.md"
 out="$(bash "$S/scripts/update_check.sh")"; has "$out" '^UPDATE_AVAILABLE' && ok "UPDATE_AVAILABLE" || bad "UPDATE_AVAILABLE ($out)"
 out="$(bash "$S/scripts/update_check.sh" --apply)"; has "$out" 'ERROR reason=raw_url_unavailable' && ok "non-GitHub source fails safe" || bad "non-GitHub apply ($out)"
 check "skill intact after failed apply" test -f "$S/SKILL.md"
+out="$(CONTEXT_BLEACH_RAW="file://$T/work" bash "$S/scripts/update_check.sh" --apply)"
+has "$out" '^UPDATED' && ok "UPDATED via RAW override" || bad "UPDATED ($out)"
+new="$(git -C "$T/work" rev-parse HEAD)"
+check "metadata now at new commit" grep -q "\"commit\": \"$new\"" "$S/.context-bleach-install.json"
+out="$(bash "$S/scripts/update_check.sh")"; has "$out" '^UP_TO_DATE' && ok "clean after update" || bad "clean after update ($out)"
+check "no lock left behind" test -z "$(find "$HOME/.claude/skills" -maxdepth 1 -name '.*lock*')"
 
 # 5. disabled and unmanaged
 out="$(CONTEXT_BLEACH_NO_UPDATE=1 bash "$S/scripts/update_check.sh")"; has "$out" '^DISABLED' && ok "DISABLED" || bad "DISABLED"

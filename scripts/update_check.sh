@@ -11,6 +11,7 @@
 #   swap it into place. Restart or refresh the agent afterwards.
 # --force: with --apply, overwrite a dirty copy. Only with explicit user approval.
 # Set CONTEXT_BLEACH_NO_UPDATE=1 to skip everything (offline or air-gapped use).
+# Set CONTEXT_BLEACH_RAW=<base url> to fetch install.sh and files from a mirror or GitHub Enterprise.
 set -uo pipefail
 
 ACTION="check"
@@ -129,9 +130,13 @@ echo "UPDATE_AVAILABLE installed=$INSTALLED latest=$LATEST ref=$REF source=$SOUR
 [ "$ACTION" = "apply" ] || exit 0
 
 command -v curl >/dev/null 2>&1 || fail "curl_not_found"
-REPO="$(github_repo "$SOURCE")"
-[ -n "$REPO" ] || fail "raw_url_unavailable"
-RAW="https://raw.githubusercontent.com/$REPO/$LATEST"
+if [ -n "${CONTEXT_BLEACH_RAW:-}" ]; then
+  RAW="$CONTEXT_BLEACH_RAW"
+else
+  REPO="$(github_repo "$SOURCE")"
+  [ -n "$REPO" ] || fail "raw_url_unavailable"
+  RAW="https://raw.githubusercontent.com/$REPO/$LATEST"
+fi
 
 LOCK="$(dirname "$SKILL_DIR")/.$(basename "$SKILL_DIR").update.lock"
 mkdir "$LOCK" 2>/dev/null || fail "update_locked"

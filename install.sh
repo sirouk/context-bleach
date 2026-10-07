@@ -137,6 +137,16 @@ list_dests() {
   done
 }
 
+# Validate targets here: exit inside $(...) would not stop the script.
+if [ -z "${CONTEXT_BLEACH_DEST:-}" ]; then
+  for t in $(printf '%s' "${CONTEXT_BLEACH_TARGETS:-auto}" | tr ',' ' '); do
+    case "$t" in
+      auto|all|claude|codex|agents|prime|gemini|opencode|cursor|hermes) ;;
+      *) echo "ERROR: unknown target '$t'" >&2; exit 2 ;;
+    esac
+  done
+fi
+
 if [ "$MODE" = "uninstall" ]; then
   list_dests | while IFS= read -r d; do
     if [ -f "$d/$META" ]; then rm -rf "$d"; echo "removed $d"
