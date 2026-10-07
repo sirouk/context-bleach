@@ -44,6 +44,8 @@ The dry run always comes first. The real run never starts without a token from a
 | `context-bleach` | **dry run** (default) | Read-only. Prints the full report and a token, then stops. |
 | `context-bleach execute <token>` | **execute** | Recomputes the token. If it matches, runs the full procedure. If not, stops and changes nothing. |
 
+A mismatched token ends with a fresh dry-run report and nothing else. It never leads into execute mode by itself.
+
 Execute mode has exactly the same rules, steps, KEEP list, and DONE checks as before. The dry run only adds a gate in front of it. Nothing is relaxed.
 
 If the user says `execute` with no token, treat it as a dry run and tell them the token is needed.
@@ -88,14 +90,14 @@ Then print **one scope manifest**. Do not put questions in the manifest.
   - Anything that cannot be linked is left and listed.
   - How to check: `ps` for command lines and `ls -l /proc/*/cwd` (Linux) or `lsof -d cwd` (macOS) for working directories under the root, including `(deleted)` ones; plus PM2, systemd, cron, and compose definitions.
 - **Containers, images, volumes**: they belong if built from a Dockerfile or compose file in the root.
-  - Proof of ownership: `docker inspect` shows a bind mount, a compose `working_dir` or project label, or an image build context under the root. A grep of the root path in `docker inspect` is enough. No match means not linked: leave it and list the count.
+  - Proof of ownership: `docker inspect` shows a bind mount, a compose `working_dir` or project label, or an image build context under the root. Check every container with one command, for example `docker ps -aq | xargs -r docker inspect | grep -c '<root>'`. This is cheap; do not skip it because the root has no Dockerfile. No match means not linked: leave it and list the count.
   - A container is a datastore only if it runs a database, cache, or queue engine. Any other container is an application process: stop it in step 1, remove it in step 4.
   - Remove images and volumes if they can be rebuilt from that code and hold no KEEP data or secrets. Otherwise leave them and list them.
 - **Datastores**: local files and loopback services that the project's code or env files create or connect to are in scope, wherever they sit on disk.
   - Resolve the paths from the code, not only from env files.
   - A datastore on another host is skipped and listed, unless named at invocation.
   - State held by external services is never touched. This includes exchange orders and positions and hosted accounts. List what the code is able to create there.
-  - Never show credentials. Name datastores by host and name only.
+  - Never show credentials. Name datastores by host and name only. For secret files, print the path only: no contents and no key names.
 - **Harness stores**: open every harness and editor store on the machine before ruling on it. Use [references/harness-locations.md](references/harness-locations.md) as a search guide. Search the real machine; do not trust the list.
   - A session whose working directory was the root is deleted whole.
   - A session from another project that only mentions this one is left and listed.
@@ -151,7 +153,7 @@ Feed `fingerprint.sh` one line per item, as `<section>|<stable id>`, using exact
 - `include|<line>` and `exclude|<line>` for each invocation line, verbatim.
 - Never use PIDs, timestamps, counts, or the live session's own transcript.
 
-Print the exact lines you fed in as a **Token inputs** block in the report. In execute mode, if the token does not match and that block is in the conversation, diff your fresh lines against it and show the difference.
+Print the exact lines you fed in as a **Token inputs** block in the report. In execute mode, if the token does not match, print the fresh lines. If a Token inputs block from the dry run is in the conversation, also show the difference against it. If it is not, say the token is a hash and cannot be compared.
 
 ## Execute gate
 
