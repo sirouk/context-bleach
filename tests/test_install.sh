@@ -176,6 +176,7 @@ out8="$(cd "$U" && "$D" 2>&1)"; has "$out8" 'HISTORY_DESTROYED' && has "$out8" '
 check "untracked worktree file still on disk" test -f "$T/untrwt/notes.txt"
 check "tracked worktree files removed" test ! -f "$T/untrwt/a"
 
+check "root rule refuses a linked worktree" grep -q "Never treat a worktree as the root" "$ROOT/SKILL.md"
 check "SKILL.md has name" grep -q '^name: context-bleach' "$ROOT/SKILL.md"
 check "skill stays visible (no disable flag)" test -z "$(grep -m1 '^disable-model-invocation' "$ROOT/SKILL.md")"
 check "agent may not supply its own token" grep -q 'Never supply, guess, or reuse a token' "$ROOT/SKILL.md"

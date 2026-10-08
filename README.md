@@ -122,7 +122,7 @@ SKILL.md                      the procedure (single source of truth)
 references/harness-locations.md   where agents keep per-project traces
 scripts/update_check.sh       version check and self-update
 scripts/fingerprint.sh        token for the dry-run to execute gate (covers file contents, worktrees, plan)
-scripts/destroy_history.sh    step 6: one commit, no worktrees, no leftover objects
+scripts/destroy_history.sh    step 6: one commit, no worktrees, no leftover objects (refuses from a linked worktree; never deletes untracked or ignored files)
 agents/openai.yaml            Codex metadata (implicit invocation off)
 install.sh                    curl | bash installer
 tests/test_install.sh         sandbox tests for install and update
