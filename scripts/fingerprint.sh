@@ -24,6 +24,8 @@ top="$(git -C "$root" rev-parse --show-toplevel 2>/dev/null)" || { echo "ERROR: 
 top="$(cd "$top" && pwd -P)"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
+if command -v sha256sum >/dev/null 2>&1; then HASHER=(sha256sum); else HASHER=(shasum -a 256); fi
+
 digest() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum | cut -d' ' -f1
   else shasum -a 256 | cut -d' ' -f1; fi
@@ -31,20 +33,30 @@ digest() {
 
 # tree_state <dir>: status paths plus a content hash of every non-ignored file.
 tree_state() {
-  local d="$1" f
-  {
-    git -C "$d" status --porcelain=v1 -z --untracked-files=all 2>/dev/null
-    git -C "$d" ls-files -co --exclude-standard -z 2>/dev/null |
-      while IFS= read -r -d '' f; do
-        case "$f" in *$'\n'*) continue ;; esac
-        [ -f "$d/$f" ] && printf '%s\n' "$f"
-      done | (cd "$d" && git hash-object --stdin-paths 2>/dev/null)
-  } | digest
+  local d="$1" out
+  if ! out="$(
+    {
+      git -C "$d" status --porcelain=v1 -z --untracked-files=all || exit 1
+      git -C "$d" ls-files -co --exclude-standard -z | (
+        cd "$d" || exit 1
+        while IFS= read -r -d '' f; do
+          [ -f "$f" ] && printf '%s\0' "$f"
+        done | xargs -0 -r git hash-object -- || exit 1
+      ) || exit 1
+    } | digest
+  )"; then
+    echo "HASHFAIL"
+    return 0
+  fi
+  printf '%s\n' "$out"
 }
 
-skill_commit() {
-  local m="$here/../.context-bleach-install.json"
-  [ -f "$m" ] && sed -n 's/^[[:space:]]*"commit":[[:space:]]*"\([0-9a-f]*\)".*/\1/p' "$m" | head -n 1
+skill_state() {
+  local base="$here/.." m
+  m="$(sed -n 's/^[[:space:]]*"commit":[[:space:]]*"\([0-9a-f]*\)".*/\1/p' "$base/.context-bleach-install.json" 2>/dev/null | head -n 1)"
+  printf '%s:' "${m:-unmanaged}"
+  { for p in SKILL.md scripts references; do [ -e "$base/$p" ] && find "$base/$p" -type f -print0; done; } |
+    LC_ALL=C sort -z | xargs -0 -r "${HASHER[@]}" | digest
 }
 
 lines() {
@@ -55,7 +67,7 @@ lines() {
   echo "refs|$(git -C "$top" for-each-ref 2>/dev/null | digest)"
   echo "stash|$(git -C "$top" stash list 2>/dev/null | digest)"
   echo "remotes|$(git -C "$top" remote -v 2>/dev/null | digest)"
-  echo "skill|$(skill_commit | grep . || echo none)"
+  echo "skill|$(skill_state)"
   git -C "$top" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p' | while IFS= read -r w; do
     w="$(cd "$w" 2>/dev/null && pwd -P || echo "$w")"
     [ "$w" = "$top" ] && continue
@@ -65,5 +77,9 @@ lines() {
 }
 
 canon="$(lines | LC_ALL=C sort -u)"
+if printf '%s\n' "$canon" | grep -q 'HASHFAIL'; then
+  echo "ERROR: could not hash the working tree; refusing to print a token" >&2
+  exit 2
+fi
 if [ "$mode" = "--lines" ]; then printf '%s\n' "$canon"; exit 0; fi
 printf '%s\n' "$canon" | digest | cut -c1-16

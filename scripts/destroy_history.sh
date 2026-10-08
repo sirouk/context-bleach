@@ -19,27 +19,48 @@ branch="$(git symbolic-ref -q --short HEAD || true)"
 [ "$(git rev-list --count reset)" = "1" ] || { echo "REFUSED: reset must be exactly one (orphan) commit first" >&2; exit 2; }
 [ -z "$(git status --porcelain --untracked-files=no)" ] || { echo "REFUSED: tracked files have uncommitted changes" >&2; exit 2; }
 
-# 1a. a linked worktree may hold gitignored files (.env, keys). Those could be secrets and stay.
-#     Refuse before deleting anything; the agent moves real secrets into the root, removes the rest, and reruns.
+# 1. linked worktrees.
+#    Never delete a folder on the strength of git's records alone. Only a folder whose own .git file
+#    points back into THIS repo is touched, and only its tracked files: untracked and ignored files
+#    (possible secrets) are never deleted here.
+common="$(cd "$(git rev-parse --git-common-dir)" && pwd -P)"
+[ "$git_dir" = "$common" ] || { echo "REFUSED: run this from the main checkout, not from a linked worktree ($top)" >&2; exit 2; }
+[ "$(git rev-parse --is-bare-repository)" = "false" ] || { echo "REFUSED: bare repository" >&2; exit 2; }
+
+wts="$(git worktree list --porcelain | sed -n 's/^worktree //p' | tail -n +2)"
 blocked=0
 while IFS= read -r w; do
-  [ -d "$w" ] || continue
-  [ "$(cd "$w" && pwd -P)" = "$(pwd -P)" ] && continue
-  ign="$(git -C "$w" ls-files --others --ignored --exclude-standard --directory 2>/dev/null)"
+  [ -n "$w" ] || continue
+  if [ ! -f "$w/.git" ]; then continue; fi
+  owner="$( (cd "$w" && cd "$(git rev-parse --git-common-dir 2>/dev/null)" 2>/dev/null && pwd -P) || true)"
+  [ "$owner" = "$common" ] || continue
+  ign="$(git -C "$w" ls-files --others --ignored --exclude-standard --directory 2>/dev/null || true)"
   if [ -n "$ign" ]; then
     echo "REFUSED: linked worktree $w holds ignored files that may be secrets:" >&2
     printf '%s\n' "$ign" | sed 's/^/  /' >&2
     blocked=1
   fi
-done < <(git worktree list --porcelain | sed -n 's/^worktree //p')
+done <<EOF
+$wts
+EOF
 [ "$blocked" = 0 ] || { echo "Move any secret into the same relative path under $top (or list it under left alone), delete the rest, then run this again." >&2; exit 2; }
 
-# 1b. linked worktrees: remove folder and record
-git worktree list --porcelain | sed -n 's/^worktree //p' | while IFS= read -r w; do
-  [ "$(cd "$w" 2>/dev/null && pwd -P || echo "$w")" = "$(pwd -P)" ] && continue
-  git worktree remove --force --force "$w" 2>/dev/null || rm -rf "$w"
+while IFS= read -r w; do
+  [ -n "$w" ] || continue
+  if [ ! -f "$w/.git" ]; then echo "SKIPPED $w (missing, or not a linked worktree)"; continue; fi
+  owner="$( (cd "$w" && cd "$(git rev-parse --git-common-dir 2>/dev/null)" 2>/dev/null && pwd -P) || true)"
+  if [ "$owner" != "$common" ]; then echo "SKIPPED $w (not a worktree of this repository)"; continue; fi
+  git -C "$w" ls-files -z | (cd "$w" && xargs -0 -r rm -f --)
+  rm -f "$w/.git"
+  find "$w" -depth -type d -empty -delete 2>/dev/null || true
   echo "removed worktree: $w"
-done
+  if [ -d "$w" ]; then
+    echo "LEFT in $w (untracked files, not deleted; handle them with KEEP and the plan):"
+    (cd "$w" && find . -type f | sed 's/^/  /')
+  fi
+done <<EOF
+$wts
+EOF
 git worktree prune
 rm -rf "$git_dir/worktrees"
 

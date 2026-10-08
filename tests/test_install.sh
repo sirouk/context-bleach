@@ -100,8 +100,8 @@ git -C "$G" checkout -q -- app.txt; rm "$G/untracked.txt"; e0="$("$F" "$G" </dev
 git -C "$G" branch plan; git -C "$G" worktree add -q "$T/fcwt" plan
 w1="$("$F" "$G" </dev/null)"; echo edit > "$T/fcwt/x.txt"; w2="$("$F" "$G" </dev/null)"
 [ "$w1" != "$w2" ] && [ "$w1" != "$c0" ] && ok "token covers linked worktrees" || bad "worktree ($c0 $w1 $w2)"
-"$F" "$G" --lines </dev/null | grep -q '^skill|none$' && ok "token has a skill line" || bad "skill line"
-"$S/scripts/fingerprint.sh" "$G" --lines </dev/null | grep -Eq '^skill\|[0-9a-f]{40}$' && ok "installed copy pins its skill commit" || bad "installed skill commit"
+"$F" "$G" --lines </dev/null | grep -Eq '^skill\|unmanaged:[0-9a-f]{64}$' && ok "unmanaged copy still hashes its own skill files" || bad "skill line"
+"$S/scripts/fingerprint.sh" "$G" --lines </dev/null | grep -Eq '^skill\|[0-9a-f]{40}:[0-9a-f]{64}$' && ok "installed copy pins its skill commit and files" || bad "installed skill commit"
 
 # 11. destroy_history: refuses unsafe states, leaves nothing behind
 H="$T/hist"; git init -q -b main "$H"; export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
@@ -148,6 +148,34 @@ check "gate runs a new dry run when the report is gone" grep -q 'run a new dry r
 check "no ripgrep-only flag in the search guide" test -z "$(grep -r -e '--max-filesize' "$ROOT/SKILL.md" "$ROOT/references" || true)"
 check "line| token section documented" grep -q 'line|<absolute path>|<exact line text>' "$ROOT/SKILL.md"
 check "keep| token section documented" grep -q "keep|<absolute path>" "$ROOT/SKILL.md"
+# 12. hardening: odd file names, linked-worktree invocation, stale worktree records, bare repos
+Q="$T/quote"; git init -q -b main "$Q"; printf 'q1\n' > "$Q/"'"q".py'; printf 'z\n' > "$Q/zz.txt"; git -C "$Q" add -A; git -C "$Q" -c user.name=t -c user.email=t@t commit -q -m a
+printf 'm1\n' >> "$Q/zz.txt"; q1="$("$F" "$Q" </dev/null)"; printf 'm2\n' >> "$Q/zz.txt"; q2="$("$F" "$Q" </dev/null)"
+[ -n "$q1" ] && [ "$q1" != "$q2" ] && ok "token sees edits after a file named with a double quote" || bad "quoted name blinds token ($q1 $q2)"
+printf 'nl\n' > "$Q/a
+b.txt"; n1="$("$F" "$Q" </dev/null)"; printf 'nl2\n' > "$Q/a
+b.txt"; n2="$("$F" "$Q" </dev/null)"
+[ "$n1" != "$n2" ] && ok "token sees edits to a file with a newline in its name" || bad "newline name"
+
+M="$T/mainco"; git init -q -b main "$M"; echo code > "$M/a.txt"; echo SECRET > "$M/.env"; echo .env > "$M/.gitignore"; git -C "$M" add -A; git -C "$M" commit -q -m one
+git -C "$M" worktree add -q --orphan -b reset "$T/linked" 2>/dev/null; echo x > "$T/linked/f.txt"; git -C "$T/linked" add -A; git -C "$T/linked" commit -q -m "Initial commit"
+out6="$(cd "$T/linked" && "$D" 2>&1)"; rc6=$?
+[ "$rc6" -ne 0 ] && has "$out6" 'REFUSED: run this from the main checkout' && ok "destroy_history refuses to run from a linked worktree" || bad "linked invocation ($rc6 $out6)"
+check "main checkout and its secret intact after that refusal" bash -c "test -f '$M/.env' && test -d '$M/.git'"
+
+S1="$T/stale"; git init -q -b main "$S1"; echo a > "$S1/a"; git -C "$S1" add -A; git -C "$S1" commit -q -m one; git -C "$S1" branch side; git -C "$S1" worktree add -q "$T/stalewt" side
+mv "$T/stalewt" "$T/stalewt-moved"; mkdir "$T/stalewt"; echo mine > "$T/stalewt/important.txt"
+git -C "$S1" checkout -q --orphan tmp; git -C "$S1" add -A; git -C "$S1" commit -q -m "Initial commit"; git -C "$S1" branch -M reset
+out7="$(cd "$S1" && "$D" 2>&1)"; has "$out7" 'HISTORY_DESTROYED' && ok "destroy_history survives a stale worktree record" || bad "stale record ($out7)"
+check "unrelated folder at a stale worktree path is kept" test "$(cat "$T/stalewt/important.txt")" = "mine"
+
+U="$T/untr"; git init -q -b main "$U"; echo a > "$U/a"; git -C "$U" add -A; git -C "$U" commit -q -m one; git -C "$U" branch side; git -C "$U" worktree add -q "$T/untrwt" side
+echo keepme > "$T/untrwt/notes.txt"
+git -C "$U" checkout -q --orphan tmp; git -C "$U" add -A; git -C "$U" commit -q -m "Initial commit"; git -C "$U" branch -M reset
+out8="$(cd "$U" && "$D" 2>&1)"; has "$out8" 'HISTORY_DESTROYED' && has "$out8" 'LEFT in' && ok "untracked files in a worktree are listed, not deleted" || bad "untracked left ($out8)"
+check "untracked worktree file still on disk" test -f "$T/untrwt/notes.txt"
+check "tracked worktree files removed" test ! -f "$T/untrwt/a"
+
 check "SKILL.md has name" grep -q '^name: context-bleach' "$ROOT/SKILL.md"
 check "skill stays visible (no disable flag)" test -z "$(grep -m1 '^disable-model-invocation' "$ROOT/SKILL.md")"
 check "agent may not supply its own token" grep -q 'Never supply, guess, or reuse a token' "$ROOT/SKILL.md"
