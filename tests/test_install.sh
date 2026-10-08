@@ -176,6 +176,11 @@ out8="$(cd "$U" && "$D" 2>&1)"; has "$out8" 'HISTORY_DESTROYED' && has "$out8" '
 check "untracked worktree file still on disk" test -f "$T/untrwt/notes.txt"
 check "tracked worktree files removed" test ! -f "$T/untrwt/a"
 
+mkdir -p "$T/copyA" "$T/copyB"; cp -r "$S/SKILL.md" "$S/scripts" "$S/references" "$T/copyA/"; cp -r "$S/SKILL.md" "$S/scripts" "$S/references" "$T/copyB/"
+ca="$("$T/copyA/scripts/fingerprint.sh" "$G" --lines </dev/null | grep '^skill|')"; cb="$("$T/copyB/scripts/fingerprint.sh" "$G" --lines </dev/null | grep '^skill|')"
+[ -n "$ca" ] && [ "$ca" = "$cb" ] && ok "same skill files at different paths give the same skill line" || bad "skill line depends on path ($ca vs $cb)"
+echo "# edited" >> "$T/copyB/SKILL.md"; cb2="$("$T/copyB/scripts/fingerprint.sh" "$G" --lines </dev/null | grep '^skill|')"
+[ "$ca" != "$cb2" ] && ok "editing the installed skill changes the skill line" || bad "skill edit not seen"
 check "root rule refuses a linked worktree" grep -q "Never treat a worktree as the root" "$ROOT/SKILL.md"
 check "SKILL.md has name" grep -q '^name: context-bleach' "$ROOT/SKILL.md"
 check "skill stays visible (no disable flag)" test -z "$(grep -m1 '^disable-model-invocation' "$ROOT/SKILL.md")"

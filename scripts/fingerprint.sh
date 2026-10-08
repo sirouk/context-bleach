@@ -52,11 +52,13 @@ tree_state() {
 }
 
 skill_state() {
-  local base="$here/.." m
+  local base m
+  base="$(cd "$here/.." && pwd -P)"
   m="$(sed -n 's/^[[:space:]]*"commit":[[:space:]]*"\([0-9a-f]*\)".*/\1/p' "$base/.context-bleach-install.json" 2>/dev/null | head -n 1)"
   printf '%s:' "${m:-unmanaged}"
-  { for p in SKILL.md scripts references; do [ -e "$base/$p" ] && find "$base/$p" -type f -print0; done; } |
-    LC_ALL=C sort -z | xargs -0 -r "${HASHER[@]}" | digest
+  # relative paths, so identical copies installed in different places give the same value
+  (cd "$base" && for p in SKILL.md scripts references; do [ -e "$p" ] && find "$p" -type f -print0; done |
+    LC_ALL=C sort -z | xargs -0 -r "${HASHER[@]}") | digest
 }
 
 lines() {
